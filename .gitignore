@@ -5,3 +5,4 @@ binary/*.tgz
 *.iml
 */remote/*
 */config/*
+*/data/*
