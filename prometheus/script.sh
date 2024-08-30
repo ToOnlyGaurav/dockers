@@ -6,8 +6,8 @@ case ${1} in
 	"build" ) 
 		echo "Building...."
 		host_ip=$(ifconfig|grep 192|awk '{print $2}')
-		mkdir -p remote
     rm -rf remote/*
+    rm -rf config/*
 
     tar -zxvf ../binary/prometheus-2.43.0.linux-amd64.tar.gz -C ./remote/
     cp ./../configs/prometheus.yml ./config/

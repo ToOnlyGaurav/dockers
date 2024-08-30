@@ -1,5 +1,7 @@
 .DS_Store
 binary/*.gz
+binary/*.tgz
 .idea/*
 *.iml
 */remote/*
+*/config/*

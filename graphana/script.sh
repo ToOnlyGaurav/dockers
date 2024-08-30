@@ -6,8 +6,7 @@ case ${1} in
 	"build" ) 
 		echo "Building...."
 		host_ip=$(ifconfig|grep 192|awk '{print $2}')
-    mkdir -p remote
-    rm -rf remote/*
+    rm -rf config/*.yml
     cp ./../configs/prometheus.yml ./config/
     sed -i -e 's/__HOST__IP__/'${host_ip}'/' ./config/prometheus.yml
 

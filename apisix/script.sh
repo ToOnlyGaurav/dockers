@@ -1,20 +1,20 @@
 #!/bin/bash
 
-name="myubuntu_zk"
+name="myubuntu_apisix"
 
 case ${1} in
 	"build" ) 
 		echo "Building...."
-		rm -rf remote/*
 
-		tar -zxvf ../binary/jdk-17_linux-x64_bin.tar.gz -C ./remote/
-		tar -zxvf ../binary/apache-zookeeper-3.9.2-bin.tar.gz -C ./remote/
-		cp ../configs/zoo.cfg ./remote/apache-zookeeper-3.9.2-bin/conf/.
-		docker build . -t ${name}
+    rm -rf config/*.yaml
+    cp ./../configs/apisix/* ./config/
+
+		docker-compose up -d
+		# docker build . -t ${name}
 	;;
 	"run" )
 		echo "Running..."
-		docker run -d --rm -p 2181:2181 --platform linux/x86_64 --name ${name} -it ${name}
+		docker run -d --rm -p 8080:80 --platform  linux/x86_64 --name ${name} -it ${name}
 	;;
 
 	"exec" )
