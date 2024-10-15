@@ -14,4 +14,6 @@ COPY ./config/aerospike.conf /etc/aerospike/aerospike.conf
 
 ADD entrypoint.sh entrypoint.sh
 
-CMD ["bash"]
+ENTRYPOINT ["./entrypoint.sh"]
+
+CMD ["asd"]

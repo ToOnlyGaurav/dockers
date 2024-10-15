@@ -21,5 +21,9 @@ RUN java -version
 # Define a working directory
 WORKDIR /remote
 
-# Default command to execute when running the container
-CMD ["bash"]
+COPY entrypoint.sh /
+
+ENTRYPOINT ["/entrypoint.sh"]
+
+CMD ["zkServer.sh", "start-foreground"]
+#CMD ["bash"]
