@@ -1,7 +1,7 @@
 # Use the official Ubuntu base image
 FROM --platform=linux/amd64 myubuntu
 
-COPY remote /remote
+COPY binaries /remote
 
 # Define a working directory
 WORKDIR /remote/prometheus-2.43.0.linux-amd64

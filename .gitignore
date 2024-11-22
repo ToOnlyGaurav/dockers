@@ -1,11 +1,15 @@
 .DS_Store
 binary/*.gz
 binary/*.tgz
+binary/*.sha512
 binary/*.tar
 locust/locustfiles/*.py
 locust/locustfiles/__pycache__/
 .idea/*
 *.iml
 */remote/*
+*/binaries/*
 */config/*
+*/configs/*
 */data/*
+*/*.log

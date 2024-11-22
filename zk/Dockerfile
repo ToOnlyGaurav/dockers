@@ -1,29 +1,23 @@
 # Use the official Ubuntu base image
-FROM --platform=linux/amd64 myubuntu
+FROM --platform=linux/amd64 myubuntu_jdk
 
 # Copy local JDK and Zookeeper tarballs into the container
-COPY remote /remote
+COPY binaries /remote
+COPY configs/zoo.cfg /remote/apache-zookeeper-3.9.2-bin/conf/
 
 # Install Zookeeper
 ENV ZOOKEEPER_HOME=/remote/apache-zookeeper-3.9.2-bin
 
-# Set JAVA_HOME environment variable
-ENV JAVA_HOME=/remote/jdk-17
-
 # Set PATH environment variable
-ENV PATH="$JAVA_HOME/bin:$ZOOKEEPER_HOME/bin:$PATH"
+ENV PATH="$ZOOKEEPER_HOME/bin:$PATH"
 
 RUN mkdir -p /var/lib/zookeeper
 
-# Verify Java installation
-RUN java -version
-
 # Define a working directory
-WORKDIR /remote
+WORKDIR $ZOOKEEPER_HOME/bin
 
 COPY entrypoint.sh /
 
 ENTRYPOINT ["/entrypoint.sh"]
 
 CMD ["zkServer.sh", "start-foreground"]
-#CMD ["bash"]

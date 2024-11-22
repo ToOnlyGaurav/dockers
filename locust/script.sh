@@ -1,32 +1,10 @@
 #!/bin/bash
 
-name="mylocust"
+source ./../script.sh
 
-case ${1} in
-	"build" ) 
-		echo "Building...."
-		docker build . -t ${name}
-	;;
-	"run" )
-		echo "Running..."
-		docker run -d --rm --platform linux/x86_64 --name ${name} -p 8089:8089 -it ${name}
-	;;
+export name="myubuntu_locust"
+export binaries=""
+export configs=""
+export ports="8089:8089"
 
-	"exec" )
-		echo "Executing..."
-		id=$(docker ps -q -a --no-trunc -f name=$name )
-		docker exec -it ${id} bash
-	;;
-
-	"rm" )
-		id=$(docker ps -q -a --no-trunc -f name=$name )
-		docker rm ${id}
-	;;
-	"stop" )
-		echo "Stopping..."
-		id=$(docker ps -q -a --no-trunc -f name=$name )
-		docker stop ${id}
-	;;
-
-esac
-
+trigger "$@"
