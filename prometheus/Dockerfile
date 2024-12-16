@@ -6,7 +6,7 @@ COPY binaries /remote
 # Define a working directory
 WORKDIR /remote/prometheus-2.43.0.linux-amd64
 RUN mkdir -p /prometheus
-COPY /config/prometheus.yml /etc/prometheus/prometheus.yml
+COPY /configs/prometheus.yml /etc/prometheus/prometheus.yml
 ENV PATH="/remote/prometheus-2.43.0.linux-amd64:$PATH"
 
 

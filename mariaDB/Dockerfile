@@ -1,11 +1,10 @@
 # Use the official Ubuntu base image
-FROM --platform=linux/amd64 myubuntu_jdk
+FROM --platform=linux/amd64 myubuntu
 
 COPY binaries /remote
-COPY configs/zoo.cfg /remote/apache-zookeeper-3.9.2-bin/conf/
+COPY configs/mariadb.cnf /remote/m
 
-# Install Zookeeper
-ENV ZOOKEEPER_HOME=/remote/apache-zookeeper-3.9.2-bin
+ENV MARIADB_HOME=/remote/mariadb-11.6.2-ubuntu-jammy-amd64-debs
 
 # Set PATH environment variable
 ENV PATH="$ZOOKEEPER_HOME/bin:$PATH"

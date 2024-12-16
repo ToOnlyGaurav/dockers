@@ -1,11 +1,11 @@
 services:
-  mariadb_primar:
+  myMariaDb:
     image: mariadb:latest
-    container_name: mariadb_primary
+    container_name: myubuntu_mymariadb
     restart: unless-stopped
     volumes:
-      - db_master_data:/var/lib/mysql
-      - ./config/primary_mysql.cnf:/etc/mysql/conf.d/mysql.cnf
+      - mariadb_data:/var/lib/mysql
+      - ./config/mariadb.cnf:/etc/mysql/conf.d/mysql.cnf
     environment:
       MYSQL_ROOT_PASSWORD: my-secret-pw
       MYSQL_DATABASE: mydatabase
@@ -13,28 +13,10 @@ services:
       - "3306:3306"
     networks:
       - mariadb_network
-  mariadb_replica:
-    image: mariadb:latest
-    container_name: mariadb_replica
-    restart: unless-stopped
-    volumes:
-      - db_master_data:/var/lib/mysql
-      - ./config/replica_mysql.cnf:/etc/mysql/conf.d/mysql.cnf
-    environment:
-      MYSQL_ROOT_PASSWORD: my-secret-pw
-      MYSQL_DATABASE: mydatabase
-#    ports:
-#      - "3306:3306"
-    networks:
-      - mariadb_network
 volumes:
-  db_master_data:
-    name: db_master_data
+  mariadb_data:
+    name: mariadb_data
     driver: local
-  db_slave_data:
-    name: db_slave_data
-    driver: local
-
 networks:
   mariadb_network:
     name: mariadb_network

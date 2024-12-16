@@ -1,9 +1,8 @@
-version: '3'
 services:
   prometheus:
     image: myubuntu_prometheus
     volumes:
-      - "./config/prometheus.yml:/etc/prometheus/prometheus.yml"
+      - "./configs/prometheus.yml:/etc/prometheus/prometheus.yml"
     ports:
       - 9090:9090
 

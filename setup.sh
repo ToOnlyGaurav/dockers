@@ -34,10 +34,9 @@ aerospike(){
 }
 
 mariadb(){
-  wget https://dlm.mariadb.com/3894256/MariaDB/mariadb-11.5.2/repo/debian/mariadb-11.5.2-debian-bookworm-arm64-debs.tar -P ./binary/
+#  wget https://dlm.mariadb.com/3964818/MariaDB/mariadb-11.6.2/repo/ubuntu/mariadb-11.6.2-ubuntu-jammy-amd64-debs.tar -P ./binary/
+  wget https://archive.mariadb.org//mariadb-11.6.2/galera-26.4.20/bintar/galera-26.4.20-i686.tar.gz -P ./binary/
 }
-
-
 
 if [ ${#} -eq 0 ]; then
   usage

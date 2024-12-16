@@ -6,6 +6,7 @@ name="name"
 binaries=""
 configs=""
 ports=""
+with_docker_compose="false"
 
 usage(){
   echo "Usage..."
@@ -22,6 +23,7 @@ function attribute_info() {
     echo "binaries=${binaries}"
     echo "configs=${configs}"
     echo "ports=${ports}"
+    echo "with_docker_compose=${with_docker_compose}"
 }
 
 function remote_copy(){
@@ -36,35 +38,49 @@ function remote_copy(){
     tar -zxvf ../binary/${binary} -C ./binaries/
   done
 
+  host_ip=$(ifconfig|grep 192|awk '{print $2}'|tail -n1)
   for config in ${configs}; do
       echo "moving config ${config}"
       mkdir -p ${CONFIG_FILE_PATH}
       cp ../configs/${config} ./configs/.
+      sed -i -e "s/__HOST__IP__/${host_ip}/" ./configs/${config}
     done
 }
 
+
 function docker_build() {
     echo "Building...."
-    docker build . -t ${name}
+    if [ ${with_docker_compose} == "true" ]; then
+      echo "building with docker_compose"
+    else
+      echo "building using Dockerfile"
+      docker build . -t ${name}
+    fi
 }
 
 function docker_run() {
     set -x
     echo "Running...."
-    docker_ports=""
-    if [ -n "${ports}" ]; then
-      for port in ${ports}; do
-        docker_ports="-p ${port} ${docker_ports}"
-      done
-    fi
+    if [ ${with_docker_compose} == "true" ]; then
+      echo "building with docker_compose"
+      docker-compose up -d # --remove-orphans
+    else
+      echo "building using Dockerfile"
+      docker_ports=""
+      if [ -n "${ports}" ]; then
+        for port in ${ports}; do
+          docker_ports="-p ${port} ${docker_ports}"
+        done
+      fi
 
-    docker run -d --rm ${docker_ports} --platform linux/x86_64 --name ${name} -it ${name}
+      docker run -d --rm ${docker_ports} --platform linux/x86_64 -v ./remote:/usr/share/remote --name ${name} -it ${name}
+    fi
 }
 
 function docker_exec() {
     echo "Executing..."
     id=$(docker ps -q -a --no-trunc -f name=$name$ )
-    docker exec -it ${id} bash
+    docker exec -it ${id} "${@}"
 }
 
 function docker_rm() {
@@ -75,8 +91,15 @@ function docker_rm() {
 
 function docker_stop() {
     echo "Stopping..."
-		id=$(docker ps -q -a --no-trunc -f name=$name$ )
-		docker stop ${id}
+
+    if [ ${with_docker_compose} == "true" ]; then
+      echo "Stopping using docker_compose"
+      docker-compose stop
+    else
+      echo "Stopping using docker process"
+      id=$(docker ps -q -a --no-trunc -f name=$name$ )
+      docker stop ${id}
+    fi
 }
 
 function trigger() {
@@ -96,7 +119,7 @@ function trigger() {
 
     "exec" )
       attribute_info
-      docker_exec
+      docker_exec "bash"
     ;;
 
     "rm" )
@@ -107,5 +130,7 @@ function trigger() {
       attribute_info
       docker_stop
     ;;
+    *)
+     usage
   esac
 }

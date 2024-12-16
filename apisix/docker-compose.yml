@@ -4,7 +4,7 @@ services:
     container_name: apisix
     restart: always
     volumes:
-      - ./config/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./configs/config.yaml:/usr/local/apisix/conf/config.yaml:ro
     depends_on:
       - etcd
     ports:
@@ -19,7 +19,7 @@ services:
     container_name: dashboard
     restart: always
     volumes:
-      - ./config/conf.yaml:/usr/local/apisix-dashboard/conf/conf.yaml:ro
+      - ./configs/conf.yaml:/usr/local/apisix-dashboard/conf/conf.yaml:ro
     depends_on:
       - etcd
     ports:
@@ -29,6 +29,7 @@ services:
   etcd:
     image: bitnami/etcd:3.4.15
     container_name: etcd
+    platform: linux/amd64
     restart: always
     volumes:
       - etcd_data:/bitnami/etcd
