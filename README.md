@@ -1,5 +1,5 @@
 # Repository for list of docker images
-There are scenarios where you need different setups like ubuntu, nginx, mariaDB etc. There are vanila setups available in the market however situations where you need customisations or you want to use as it. This repo will help where we are having simple packages and installations.  
+There are scenarios where you need different setups like ubuntu, nginx, mariaDB etc. There are vanila setups available in the market however situations where you need customisations or you want to use as it. This repo will help where we are having simple packages and installations. These are mainaly for Mac Arm achitecture  
 
 ## Setup approach
 We are setting up the packages in which one might setup on dedicated VMs. For example, using the JDK binary to install java, or ZK binary to setup zookeeper.

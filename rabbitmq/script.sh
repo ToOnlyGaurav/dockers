@@ -10,8 +10,6 @@ export with_docker_compose="false"
 
 trigger "$@"
 
-
-
 case ${1} in
 	"run" )
 		echo "Running..."

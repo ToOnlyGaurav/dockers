@@ -1,12 +1,14 @@
 # Use the official Ubuntu base image
-FROM --platform=linux/amd64 ubuntu:jammy
+FROM --platform=linux/arm64 ubuntu:noble
 
 # Set environment variables to avoid interactive prompts during build
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install necessary utilities
-RUN apt-get update && \
-    apt-get install -y \
+RUN set -eux && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive \
+    apt-get install -y --no-install-recommends \
     curl \
     less \
     tar \
@@ -14,8 +16,15 @@ RUN apt-get update && \
     sudo \
     gnupg \
     vim \
-    apt-transport-https -y \
-    && apt-get clean
+    ca-certificates \
+    dirmngr \
+    gosu \
+    gnupg \
+    netcat-traditional \
+    wget \
+    apt-transport-https -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Default command to execute when running the container
 CMD ["bash"]

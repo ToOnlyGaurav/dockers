@@ -1,5 +1,5 @@
 # Use the official Ubuntu base image
-FROM --platform=linux/amd64 myubuntu
+FROM myubuntu
 
 COPY binaries /remote
 

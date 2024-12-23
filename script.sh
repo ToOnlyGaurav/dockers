@@ -7,6 +7,7 @@ binaries=""
 configs=""
 ports=""
 with_docker_compose="false"
+shell_command="bash"
 
 usage(){
   echo "Usage..."
@@ -54,7 +55,10 @@ function docker_build() {
       echo "building with docker_compose"
     else
       echo "building using Dockerfile"
-      docker build . -t ${name}
+
+      if [ -f "Dockerfile" ]; then
+        docker build . -t ${name}
+      fi
     fi
 }
 
@@ -73,7 +77,7 @@ function docker_run() {
         done
       fi
 
-      docker run -d --rm ${docker_ports} --platform linux/x86_64 -v ./remote:/usr/share/remote --name ${name} -it ${name}
+      docker run -d --rm ${docker_ports} -v ./remote:/usr/share/remote --name ${name} -it ${name}
     fi
 }
 
@@ -89,6 +93,14 @@ function docker_rm() {
     docker rm ${id}
 }
 
+function docker_logs() {
+    echo "Logging..."
+    id=$(docker ps -q -a --no-trunc -f name=$name$ )
+    docker logs ${id}
+}
+
+
+
 function docker_stop() {
     echo "Stopping..."
 
@@ -98,7 +110,9 @@ function docker_stop() {
     else
       echo "Stopping using docker process"
       id=$(docker ps -q -a --no-trunc -f name=$name$ )
-      docker stop ${id}
+      if [ -n "$id" ]; then
+        docker stop ${id}
+      fi
     fi
 }
 
@@ -109,12 +123,17 @@ function trigger() {
       remote_copy
       docker_build
     ;;
+
     "run" )
       attribute_info
       if [ ${#} -eq 2 ] && [ ${2} == "-f" ]; then
         docker_stop
       fi
       docker_run
+    ;;
+
+    "shell" )
+      docker_exec ${shell_command}
     ;;
 
     "exec" )
@@ -126,6 +145,11 @@ function trigger() {
       attribute_info
       docker_rm
     ;;
+
+    "logs" )
+      docker_logs
+    ;;
+
     "stop" )
       attribute_info
       docker_stop

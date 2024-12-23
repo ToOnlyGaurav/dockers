@@ -1,12 +1,12 @@
 # Use the official Ubuntu base image
-FROM --platform=linux/amd64 myubuntu_python
+FROM myubuntu_python
 
 # Set environment variables to avoid interactive prompts during build
 ENV DEBIAN_FRONTEND=noninteractive
 
 COPY binaries /remote
 
-WORKDIR /remote/aerospike-server-enterprise_7.1.0.5_tools-11.0.2_ubuntu22.04_x86_64
+WORKDIR /remote/aerospike-server-enterprise_7.2.0.4_tools-11.1.1_ubuntu24.04_aarch64
 
 RUN ./asinstall
 
