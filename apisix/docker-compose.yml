@@ -2,7 +2,7 @@ services:
   apisix:
     image: 'apache/apisix:3.2.0-debian'
     container_name: apisix
-    restart: always
+    restart: unless-stopped #always
     volumes:
       - ./configs/config.yaml:/usr/local/apisix/conf/config.yaml:ro
     depends_on:
@@ -17,7 +17,7 @@ services:
   dashboard:
     image: 'apache/apisix-dashboard:3.0.1-alpine'
     container_name: dashboard
-    restart: always
+    restart: unless-stopped #always
     volumes:
       - ./configs/conf.yaml:/usr/local/apisix-dashboard/conf/conf.yaml:ro
     depends_on:
@@ -30,7 +30,7 @@ services:
     image: bitnami/etcd:3.4.15
     container_name: etcd
     platform: linux/amd64
-    restart: always
+    restart: unless-stopped #always
     volumes:
       - etcd_data:/bitnami/etcd
     environment:

@@ -6,6 +6,7 @@ name="name"
 binaries=""
 configs=""
 ports=""
+volumes=""
 with_docker_compose="false"
 shell_command="bash"
 
@@ -24,6 +25,7 @@ function attribute_info() {
     echo "binaries=${binaries}"
     echo "configs=${configs}"
     echo "ports=${ports}"
+    echo  "volumes=${volumes}"
     echo "with_docker_compose=${with_docker_compose}"
 }
 
@@ -77,7 +79,14 @@ function docker_run() {
         done
       fi
 
-      docker run -d --rm ${docker_ports} -v ./remote:/usr/share/remote --name ${name} -it ${name}
+      docker_volumes=""
+      if [ -n "${volumes}" ]; then
+        for volume in ${volumes}; do
+          docker_volumes="-v ${volume} ${docker_volumes}"
+        done
+      fi
+
+      docker run -d --rm ${docker_ports} -v ./remote:/usr/share/remote:ro ${docker_volumes} --name ${name} -it ${name}
     fi
 }
 
@@ -97,6 +106,13 @@ function docker_logs() {
     echo "Logging..."
     id=$(docker ps -q -a --no-trunc -f name=$name$ )
     docker logs ${id}
+}
+
+function docker_cp() {
+    input_file=${1}
+    echo "Copying...${input_file}"
+    id=$(docker ps -q -a --no-trunc -f name=$name$ )
+    docker cp ${input_file} ${id}:/remote
 }
 
 
@@ -149,6 +165,11 @@ function trigger() {
     "logs" )
       docker_logs
     ;;
+
+      "cp" )
+        attribute_info
+        docker_cp ${2}
+      ;;
 
     "stop" )
       attribute_info

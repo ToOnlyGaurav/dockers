@@ -17,5 +17,7 @@ RUN python3 -m venv /tmp/venv
 
 ENV PATH="${PATH}:/tmp/venv/bin/"
 
+WORKDIR /remote
+
 # Default command to execute when running the container
 CMD ["bash"]

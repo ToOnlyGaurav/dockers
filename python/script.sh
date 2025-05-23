@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 source ./../script.sh
 
 export name="myubuntu_python"

@@ -71,6 +71,7 @@ cd ubuntu
 * openTSDB
 * prometheus
 * rabbitmq
+* hbase - WIP
 
 ### Wishlist
 

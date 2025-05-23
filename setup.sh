@@ -9,6 +9,7 @@ usage(){
   echo "sh $0 prometheus"
   echo "sh $0 aerospike"
   echo "sh $0 mariadb"
+  echo "sh $0 hbase"
   exit 1
 }
 
@@ -44,6 +45,14 @@ mariadb(){
   wget https://dlm.mariadb.com/3964815/MariaDB/mariadb-11.6.2/repo/ubuntu/mariadb-11.6.2-ubuntu-noble-arm64-debs.tar  -P ./binary/
 }
 
+hbase(){
+  wget https://dlcdn.apache.org/hbase/3.0.0-beta-1/hbase-3.0.0-beta-1-bin.tar.gz -P ./binary/
+}
+
+maven(){
+  wget https://dlcdn.apache.org/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz -P ./binary/
+}
+
 if [ ${#} -eq 0 ]; then
   usage
 fi
@@ -73,6 +82,14 @@ case ${1} in
     echo "Setting up ${1}"
     mariadb
   ;;
+  "hbase")
+    echo "Setting up ${1}"
+    hbase
+  ;;
+  "maven")
+    echo "Setting up ${1}"
+    maven
+  ;;
   "all")
     jdk
     zookeeper
@@ -80,6 +97,8 @@ case ${1} in
     prometheus
     aerospike
     mariadb
+    hbase
+    maven
   ;;
   *) usage
 esac
