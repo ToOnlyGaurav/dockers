@@ -1,8 +1,8 @@
 #!/bin/bash
 
 if [ "$1" = "asd" ]; then
-  #asd --config-file /etc/aerospike/aerospike.conf
+  #asd --config-file /opt/aerospike/config/aerospike.conf
 
-  set -- "$@" --config-file /etc/aerospike/aerospike.conf --foreground
+  set -- "$@" --config-file /opt/aerospike/config/aerospike.conf --foreground
 fi
 exec "$@"

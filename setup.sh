@@ -3,7 +3,10 @@
 usage(){
   echo "Usage..."
   echo "sh $0 <<component>>"
+
   echo "sh $0 jdk"
+  echo "sh $0 maven"
+  echo "sh $0 locust"
   echo "sh $0 zookeeper"
   echo "sh $0 elasticsearch"
   echo "sh $0 prometheus"
@@ -90,15 +93,32 @@ case ${1} in
     echo "Setting up ${1}"
     maven
   ;;
+  "ubuntu")
+    echo "Setting up ${1}"
+    echo "Noting needed"
+  ;;
+  "rabbitmq")
+    echo "Setting up ${1}"
+    echo "Noting needed"
+  ;;
   "all")
+    ubuntu
     jdk
+    maven
+    python
+    nginx
     zookeeper
     elasticsearch
     prometheus
+    opentsdb
     aerospike
     mariadb
     hbase
-    maven
+    locust
+    graphana
+    rabbitmq
+    flamegraph
+    apisix
   ;;
   *) usage
 esac

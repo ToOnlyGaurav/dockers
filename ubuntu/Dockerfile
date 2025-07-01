@@ -22,6 +22,10 @@ RUN set -eux && \
     gnupg \
     netcat-traditional \
     wget \
+    conntrack \
+    ngrep \
+    net-tools \
+    tcpdump \
     apt-transport-https -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

@@ -6,7 +6,8 @@ name="name"
 binaries=""
 configs=""
 ports=""
-volumes=""
+volume=""
+volume_mapping=""
 with_docker_compose="false"
 shell_command="bash"
 
@@ -25,8 +26,16 @@ function attribute_info() {
     echo "binaries=${binaries}"
     echo "configs=${configs}"
     echo "ports=${ports}"
-    echo  "volumes=${volumes}"
+    echo "volume=${volume}"
+    echo "volume_mapping=${volume_mapping}"
     echo "with_docker_compose=${with_docker_compose}"
+}
+
+function create_volume() {
+  if [ -n "${volume}" ]; then
+    echo "Creating volume ${volume}..."
+    docker volume inspect ${volume} || docker volume create --opt o=size=10G ${volume}
+  fi
 }
 
 function remote_copy(){
@@ -80,13 +89,13 @@ function docker_run() {
       fi
 
       docker_volumes=""
-      if [ -n "${volumes}" ]; then
-        for volume in ${volumes}; do
+      if [ -n "${volume_mapping}" ]; then
+        for volume in ${volume_mapping}; do
           docker_volumes="-v ${volume} ${docker_volumes}"
         done
       fi
 
-      docker run -d --rm ${docker_ports} -v ./remote:/usr/share/remote:ro ${docker_volumes} --name ${name} -it ${name}
+      docker run --cap-add CAP_NET_ADMIN -d --rm ${docker_ports} -v ./remote:/usr/share/remote:ro ${docker_volumes} --name ${name} -it ${name}
     fi
 }
 
@@ -115,8 +124,6 @@ function docker_cp() {
     docker cp ${input_file} ${id}:/remote
 }
 
-
-
 function docker_stop() {
     echo "Stopping..."
 
@@ -136,6 +143,7 @@ function trigger() {
   case ${1} in
     "build" )
       attribute_info
+      create_volume
       remote_copy
       docker_build
     ;;
