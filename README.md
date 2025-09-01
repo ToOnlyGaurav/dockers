@@ -76,5 +76,9 @@ cd ubuntu
 ### Wishlist
 
 
+update /etc/docker/daemon.json in-case one faces dns issue
+docker image prune
+
+
 
 

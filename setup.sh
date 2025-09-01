@@ -26,6 +26,7 @@ elasticsearch() {
 
 zookeeper(){
   wget https://downloads.apache.org/zookeeper/zookeeper-3.9.3/apache-zookeeper-3.9.3-bin.tar.gz -P ./binary/
+  wget https://downloads.apache.org/zookeeper/zookeeper-3.8.4/apache-zookeeper-3.8.4-bin.tar.gz -P ./binary/
 }
 jdk(){
   wget https://download.oracle.com/java/17/archive/jdk-17_linux-x64_bin.tar.gz -P ./binary/
@@ -38,7 +39,10 @@ prometheus(){
 
 aerospike(){
 #  https://aerospike.com/download/server/enterprise/
-  wget https://download.aerospike.com/artifacts/aerospike-server-enterprise/7.2.0/aerospike-server-enterprise_7.2.0.4_tools-11.1.1_ubuntu24.04_aarch64.tgz -P ./binary/
+#  https://download.aerospike.com/artifacts/aerospike-server-enterprise/
+#  wget https://download.aerospike.com/artifacts/aerospike-server-enterprise/6.4.0.23/aerospike-server-enterprise_6.4.0.23_tools-10.0.0_ubuntu22.04_x86_64.tgz -P ./binary/
+  wget https://download.aerospike.com/artifacts/aerospike-server-enterprise/6.4.0.23/aerospike-server-enterprise_6.4.0.23_tools-10.0.0_ubuntu22.04_aarch64.tgz -P ./binary/
+#  wget https://download.aerospike.com/artifacts/aerospike-server-enterprise/7.2.0/aerospike-server-enterprise_7.2.0.4_tools-11.1.1_ubuntu24.04_aarch64.tgz -P ./binary/
 }
 
 mariadb(){

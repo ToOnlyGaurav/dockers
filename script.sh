@@ -8,14 +8,17 @@ configs=""
 ports=""
 volume=""
 volume_mapping=""
+args=""
 with_docker_compose="false"
 shell_command="bash"
 
-usage(){
-  echo "Usage..."
-  echo "sh $0 build|run|run -f|exec|run|stop"
-  exit 1
-}
+  usage(){
+    echo "Usage..."
+    echo "sh $0 build|run|run -f|exec|run|stop"
+    echo "VERSION=<<>> sh $0 build|run|run -f|exec|run|stop"
+    echo "VERSION=jammy sh $0 build"
+    exit 1
+  }
 
 if [ ${#} -eq 0 ]; then
   usage
@@ -27,6 +30,7 @@ function attribute_info() {
     echo "configs=${configs}"
     echo "ports=${ports}"
     echo "volume=${volume}"
+    echo "args=${args}"
     echo "volume_mapping=${volume_mapping}"
     echo "with_docker_compose=${with_docker_compose}"
 }
@@ -67,8 +71,17 @@ function docker_build() {
     else
       echo "building using Dockerfile"
 
+      build_args=""
+      if [ -n "${args}" ]; then
+        for arg in ${args}; do
+          build_args="${build_args} --build-arg ${arg}"
+        done
+      fi
+
       if [ -f "Dockerfile" ]; then
-        docker build . -t ${name}
+        docker build  --no-cache . -t ${name} ${build_args}
+        echo "Built image: ${name}"
+#        docker build --no-cache . -t ${name}
       fi
     fi
 }

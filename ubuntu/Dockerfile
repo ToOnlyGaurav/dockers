@@ -1,5 +1,6 @@
 # Use the official Ubuntu base image
-FROM --platform=linux/arm64 ubuntu:noble
+ARG VERSION=noble
+FROM --platform=linux/arm64 ubuntu:${VERSION}
 
 # Set environment variables to avoid interactive prompts during build
 ENV DEBIAN_FRONTEND=noninteractive
@@ -26,9 +27,9 @@ RUN set -eux && \
     ngrep \
     net-tools \
     tcpdump \
+    iproute2 \
     apt-transport-https -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
 # Default command to execute when running the container
 CMD ["bash"]

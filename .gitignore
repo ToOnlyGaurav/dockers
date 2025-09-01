@@ -1,5 +1,7 @@
 .DS_Store
+binary
 binary/*.gz
+binary/*.tgz.1
 binary/*.tgz
 binary/*.sha512
 binary/*.tar

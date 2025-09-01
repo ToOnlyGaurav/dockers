@@ -1,10 +1,10 @@
 # Use the official Ubuntu base image
-FROM myubuntu_jdk
+FROM myubuntu-noble_jdk
 
 COPY binaries /remote
 
 # Install Zookeeper
-ENV ZOOKEEPER_HOME=/remote/apache-zookeeper-3.9.3-bin \
+ENV ZOOKEEPER_HOME=/remote/apache-zookeeper-3.8.4-bin \
     ZOO_CONF_DIR=/conf \
     ZOO_DATA_DIR=/data \
     ZOO_DATA_LOG_DIR=/datalog \
