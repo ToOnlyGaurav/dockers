@@ -12,7 +12,8 @@ RUN apt-get update && \
     python3 \
     python3-pip \
     python3-venv \
-    && apt-get clean
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m venv /tmp/venv
 

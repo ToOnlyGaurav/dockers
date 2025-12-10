@@ -1,0 +1,80 @@
+services:
+  aerospike_dc1_1:
+    image: myubuntu-noble_aerospike
+    container_name: aerospike_dc1_1
+    privileged: true
+    restart: unless-stopped
+    volumes:
+      - aerospike_dc1_1:/etc/aerospike/data
+      - ./aerospike-dc1_1.conf:/etc/aerospike/config/aerospike.conf
+      - ./features.conf:/etc/aerospike/features.conf
+    ports:
+      - "3000-3002:3000-3002"
+    networks:
+      - aerospike_network-dc1
+    command: [ "asd" ]
+    stdin_open: true
+    tty: true
+  aerospike_dc1_2:
+    image: myubuntu-noble_aerospike
+    container_name: aerospike_dc1_2
+    privileged: true
+    restart: unless-stopped
+    volumes:
+      - aerospike_dc1_2:/etc/aerospike/data
+      - ./aerospike-dc1_2.conf:/etc/aerospike/config/aerospike.conf
+      - ./features.conf:/etc/aerospike/features.conf
+    ports:
+      - "3100-3102:3000-3002"
+    networks:
+      - aerospike_network-dc1
+    command: [ "asd" ]
+    stdin_open: true
+    tty: true
+#  aerospike_dc2_1:
+#    image: myubuntu-noble_aerospike
+#    container_name: aerospike_dc2_1
+#    privileged: true
+#    restart: unless-stopped
+#    volumes:
+#      - aerospike_dc2_1:/etc/aerospike/data
+#      - ./aerospike-dc2.conf:/etc/aerospike/config/aerospike.conf
+#    ports:
+#      - "3500-3502:3000-3002"
+#    networks:
+#      - aerospike_network-dc2
+#    command: [ "asd" ]
+#  aerospike_dc2_2:
+#    image: myubuntu-noble_aerospike
+#    container_name: aerospike_dc2_2
+#    privileged: true
+#    restart: unless-stopped
+#    volumes:
+#      - aerospike_dc2_2:/etc/aerospike/data
+#      - ./aerospike-dc2.conf:/etc/aerospike/config/aerospike.conf
+#    ports:
+#      - "3600-3602:3000-3002"
+#    networks:
+#      - aerospike_network-dc2
+#    command: [ "asd" ]
+
+volumes:
+  aerospike_dc1_1:
+    name: aerospike_dc1_1
+    driver: local
+  aerospike_dc1_2:
+    name: aerospike_dc1_2
+    driver: local
+  aerospike_dc2_1:
+    name: aerospike_dc2_1
+    driver: local
+  aerospike_dc2_2:
+    name: aerospike_dc2_2
+    driver: local
+networks:
+  aerospike_network-dc1:
+    name: aerospike_network-dc1
+    driver: bridge
+  aerospike_network-dc2:
+    name: aerospike_network-dc2
+    driver: bridge

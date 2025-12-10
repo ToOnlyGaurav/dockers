@@ -78,6 +78,7 @@ cd ubuntu
 
 update /etc/docker/daemon.json in-case one faces dns issue
 docker image prune
+lsof -i :3002
 
 
 

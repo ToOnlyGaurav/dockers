@@ -1,6 +1,6 @@
 # Use the official Ubuntu base image
-#FROM myubuntu-noble_python
-FROM myubuntu-jammy_python
+FROM myubuntu-noble_python
+# FROM myubuntu-jammy_python
 
 # Define build arguments for version
 ARG AEROSPIKE_VERSION=6.4.0.23
@@ -17,6 +17,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Add this volume for cgroup access
 VOLUME ["/sys/fs/cgroup"]
 
+# Optionally, set environment variable for Aerospike
+ENV CGROUP_PATH=/sys/fs/cgroup
+
 COPY binaries /remote
 
 RUN echo "AEROSPIKE_VERSION=${AEROSPIKE_VERSION} TOOLS_VERSION=${TOOLS_VERSION} UBUNTU_VERSION=${UBUNTU_VERSION} AEROSPIKE_MAJOR_VERSION=${AEROSPIKE_MAJOR_VERSION} ARCH=${ARCH}"
@@ -31,7 +34,7 @@ RUN chmod +x ./asinstall || echo "Failed to chmod: asinstall not found"
 
 RUN ./asinstall
 
-RUN mkdir -p /opt/aerospike/log /etc/aerospike/config
+RUN mkdir -p /etc/aerospike/log /etc/aerospike/config
 
 COPY ./configs/aerospike_${AEROSPIKE_MAJOR_VERSION}.conf /etc/aerospike/config/aerospike.conf
 
@@ -40,4 +43,4 @@ COPY entrypoint.sh entrypoint.sh
 ENTRYPOINT ["./entrypoint.sh"]
 
 CMD ["asd"]
-# CMD ["bash"]
+#CMD ["bash"]

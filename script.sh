@@ -108,7 +108,7 @@ function docker_run() {
         done
       fi
 
-      docker run --cap-add CAP_NET_ADMIN -d --rm ${docker_ports} -v ./remote:/usr/share/remote:ro ${docker_volumes} --name ${name} -it ${name}
+      docker run --cap-add CAP_NET_ADMIN --privileged -d --rm ${docker_ports} -v ./remote:/usr/share/remote:ro ${docker_volumes} --name ${name} -it ${name}
     fi
 }
 
