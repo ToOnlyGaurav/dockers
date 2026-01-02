@@ -1,6 +1,7 @@
 #!/bin/bash
 BINARY_FILE_PATH="./binaries"
 CONFIG_FILE_PATH="./configs"
+PLATFORM="linux/arm64"
 
 name="name"
 binaries=""
@@ -71,7 +72,7 @@ function docker_build() {
     else
       echo "building using Dockerfile"
 
-      build_args=""
+      build_args="--build-arg PLATFORM=${PLATFORM}"
       if [ -n "${args}" ]; then
         for arg in ${args}; do
           build_args="${build_args} --build-arg ${arg}"

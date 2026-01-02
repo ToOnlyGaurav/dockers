@@ -83,3 +83,8 @@ lsof -i :3002
 
 
 
+### Docker commands to cleanup
+```
+docker system prune -f
+docker system prune -a --volumes
+docker system df

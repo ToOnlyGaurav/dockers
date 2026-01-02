@@ -1,5 +1,5 @@
-# Use the official Ubuntu base image
-FROM myubuntu-noble
+ARG PLATFORM=linux/amd64
+FROM --platform=${PLATFORM} myubuntu
 # FROM myubuntu-jammy
 
 # Set environment variables to avoid interactive prompts during build
@@ -12,12 +12,22 @@ RUN apt-get update && \
     python3 \
     python3-pip \
     python3-venv \
+#    aerospike \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m venv /tmp/venv
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-ENV PATH="${PATH}:/tmp/venv/bin/"
+RUN python -m pip install --no-cache-dir \
+    numpy \
+    pandas \
+    scipy \
+    scikit-learn \
+    matplotlib \
+    seaborn \
+    aerospike
 
 WORKDIR /remote
 

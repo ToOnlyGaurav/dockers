@@ -7,5 +7,9 @@ export configs=""
 export volume="m2"
 export volume_mapping="${volume}:/root/.m2"
 
+if [ -d "$HOME/gitlab/active" ]; then
+  volume_mapping="$volume_mapping $HOME/gitlab/active:/usr/share/active"
+fi
+
 trigger "$@"
 

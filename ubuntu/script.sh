@@ -1,15 +1,7 @@
 #!/bin/bash
 source ./../script.sh
 
-LATEST="noble"
-#LATEST="jammy"
-if [ -z "$VERSION" ]; then
-  VERSION="${LATEST}"
-fi
-
-export args="VERSION=${VERSION}"
-
-name="myubuntu-${VERSION}"
+name="myubuntu"
 export binaries=""
 export configs=""
 

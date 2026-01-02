@@ -2,6 +2,7 @@
 FROM myubuntu_maven
 
 # Installing required packages
+
 RUN set -eux && \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive \
@@ -45,7 +46,6 @@ RUN add-apt-repository ppa:deadsnakes/ppa
 # Timezone configuration
 RUN ln -fs /usr/share/zoneinfo/Asia/Kolkata /etc/localtime && \
     dpkg-reconfigure --frontend noninteractive tzdata
-
 
 # Installing docker
 RUN curl -fsSL https://get.docker.com -o get-docker.sh

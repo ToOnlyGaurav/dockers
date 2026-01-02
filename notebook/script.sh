@@ -2,11 +2,11 @@
 set -x
 source ./../script.sh
 
-name="myubuntu-python"
+name="myubuntu-notebook"
 
 export binaries=""
 export configs=""
-export ports=""
+export ports="8888:8888"
 export shell_command="python3"
-
+export volume_mapping="./remote/:/remote"
 trigger "$@"

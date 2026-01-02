@@ -1,13 +1,15 @@
-# Use the official Ubuntu base image
 ARG VERSION=noble
-FROM --platform=linux/arm64 ubuntu:${VERSION}
+ARG PLATFORM=linux/amd64
+
+FROM --platform=${PLATFORM} ubuntu:${VERSION}
 
 # Set environment variables to avoid interactive prompts during build
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install necessary utilities
 RUN set -eux && \
-    apt-get update && \
+    apt-get   -o Acquire::AllowInsecureRepositories=true \
+    -o Acquire::AllowDowngradeToInsecureRepositories=true update && \
     DEBIAN_FRONTEND=noninteractive \
     apt-get install -y --no-install-recommends \
     curl \

@@ -8,6 +8,7 @@ echo "show sets" | aql
 echo "show indexes" | aql
 
 ## Asadm commands
+asadm -e "show config"
 asadm -e "show sindex"
 asadm -e "show sindex like <index_name>"
 asadm -e "show stop-writes"

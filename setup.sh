@@ -13,6 +13,7 @@ usage(){
   echo "sh $0 aerospike"
   echo "sh $0 mariadb"
   echo "sh $0 hbase"
+  echo "sh $0 registry"
   exit 1
 }
 
@@ -60,6 +61,10 @@ maven(){
   wget https://dlcdn.apache.org/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz -P ./binary/
 }
 
+registry(){
+  wget https://github.com/distribution/distribution/releases/download/v2.8.3/registry_2.8.3_linux_amd64.tar.gz -P ./binary/
+}
+
 if [ ${#} -eq 0 ]; then
   usage
 fi
@@ -105,6 +110,10 @@ case ${1} in
     echo "Setting up ${1}"
     echo "Noting needed"
   ;;
+  "registry")
+    echo "Setting up ${1}"
+    registry
+  ;;
   "all")
     ubuntu
     jdk
@@ -123,6 +132,7 @@ case ${1} in
     rabbitmq
     flamegraph
     apisix
+    registry
   ;;
   *) usage
 esac

@@ -1,5 +1,6 @@
 # Use the official Ubuntu base image
-FROM myubuntu-noble_python
+ARG PLATFORM=linux/amd64
+FROM --platform=${PLATFORM} myubuntu
 # FROM myubuntu-jammy_python
 
 # Define build arguments for version
