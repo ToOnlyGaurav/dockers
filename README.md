@@ -88,3 +88,8 @@ lsof -i :3002
 docker system prune -f
 docker system prune -a --volumes
 docker system df
+
+docker images -f "dangling=true" -q | xargs -r docker rmi
+
+docker run --cap-add=CAP_NET_ADMIN --privileged -d --rm -p 8080:8080 -p 8081:8081 --name container_name -it image_name
+

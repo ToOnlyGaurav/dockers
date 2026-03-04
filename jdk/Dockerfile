@@ -1,5 +1,5 @@
 # Use the official Ubuntu base image
-FROM myubuntu-noble
+FROM myubuntu
 
 # Set environment variables to avoid interactive prompts during build
 ENV DEBIAN_FRONTEND=noninteractive

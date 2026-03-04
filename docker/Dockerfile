@@ -32,6 +32,7 @@ RUN set -eux && \
     tk-dev \
     libgdbm-dev \
     libc6-dev \
+    docker-compose \
     libbz2-dev -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

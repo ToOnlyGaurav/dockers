@@ -60,7 +60,8 @@ function remote_copy(){
       echo "moving config ${config}"
       mkdir -p ${CONFIG_FILE_PATH}
       cp ../configs/${config} ./configs/.
-      sed -i -e "s/__HOST__IP__/${host_ip}/" ./configs/${config}
+      config_file_name=$(basename "${config}")
+      sed -i -e "s/__HOST__IP__/${host_ip}/" ./configs/${config_file_name}
     done
 }
 
@@ -174,6 +175,11 @@ function trigger() {
       docker_exec ${shell_command}
     ;;
 
+    "cmd" )
+      echo "here"
+      docker_exec ${shell_command}
+    ;;
+
     "exec" )
       attribute_info
       docker_exec "bash"
@@ -188,10 +194,10 @@ function trigger() {
       docker_logs
     ;;
 
-      "cp" )
-        attribute_info
-        docker_cp ${2}
-      ;;
+    "cp" )
+      attribute_info
+      docker_cp ${2}
+    ;;
 
     "stop" )
       attribute_info

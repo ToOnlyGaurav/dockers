@@ -1,4 +1,4 @@
-FROM myubuntu-noble_jdk
+FROM myubuntu_jdk
 
 COPY binaries /remote
 
