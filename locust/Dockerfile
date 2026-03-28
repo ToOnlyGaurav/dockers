@@ -1,20 +1,15 @@
-# Use the official Ubuntu base image
 FROM myubuntu-python
 
-# Set environment variables to avoid interactive prompts during build
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install necessary utilities
+# Install locust (aerospike is already in the base image)
 RUN pip install locust
 
-# Default command to execute when running the container
-
 COPY locustfiles /locustfiles
+COPY entrypoint.sh /
 
 WORKDIR /locustfiles
 
-COPY entrypoint.sh /
+EXPOSE 8089
 
 ENTRYPOINT ["/entrypoint.sh"]
 
-CMD ["locust", "-f", "/locustfiles/locustfile.py"]
+CMD ["locust", "-f", "/locustfiles/aerospike_locustfile.py"]

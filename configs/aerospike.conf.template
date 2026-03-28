@@ -1,0 +1,96 @@
+# =============================================================================
+# Aerospike Multi-Site Cluster Configuration Template
+# =============================================================================
+# This file is processed by envsubst at container startup.
+#
+# Required environment variables:
+#   NODE_ID              - Unique hex node-id (e.g., A1, A2, B1, C1)
+#   RACK_ID              - Integer rack-id  (1 = Site-1, 2 = Site-2, 3 = Quorum)
+#   SERVICE_ADDRESS      - This node's IP on the Docker network
+#   MESH_SEED_LIST       - Newline-separated mesh-seed-address-port entries
+#                          (injected by entrypoint.sh)
+#
+# Tuning notes:
+#   - heartbeat interval 250ms / timeout 10 --> 2.5 s failure detection
+#     (generous for cross-site / cross-AZ Docker bridge latency)
+#   - min-cluster-size 4 prevents a 3-node minority from accepting writes
+#   - replication-factor 3 ensures each partition has a copy on all three
+#     racks (Site 1, Site 2, Quorum); every rack holds one full copy
+#   - active-rack 1 concentrates all master partitions on Rack 1 (Site 1)
+#   - strong-consistency true enforces SC mode on the namespace
+#   - commit-to-device true ensures durability for SC writes
+# =============================================================================
+
+service {
+    cluster-name multisite-sc
+    node-id ${NODE_ID}
+    proto-fd-max 15000
+    proto-fd-idle-ms 60000
+    min-cluster-size 4
+    feature-key-file /etc/aerospike/features.conf
+}
+
+logging {
+    console {
+        context any info
+    }
+    file /etc/aerospike/log/aerospike.log {
+        context any debug
+    }
+}
+
+network {
+    service {
+        address any
+        port 3000
+        access-address ${SERVICE_ADDRESS}
+    }
+
+    heartbeat {
+        mode mesh
+        address ${SERVICE_ADDRESS}
+        port 3002
+
+        # -- mesh seed addresses (substituted by entrypoint) --
+${MESH_SEED_LIST}
+
+        # Cross-site heartbeat tuning
+        interval 250
+        timeout 10
+    }
+
+    fabric {
+        address any
+        port 3001
+    }
+
+    info {
+        address any
+        port 3003
+    }
+}
+
+namespace mynamespace {
+    default-ttl 0
+    nsup-period 120
+    replication-factor 3
+    strong-consistency true
+    strong-consistency-allow-expunge true
+
+    # Rack-aware replication: one copy per rack, masters pinned to active-rack
+    rack-id ${RACK_ID}
+    active-rack 1
+
+    stop-writes-sys-memory-pct 90
+    max-record-size 1M
+
+    storage-engine device {
+        file /etc/aerospike/data/aerospike.dat
+        filesize 4G
+        flush-size 128K
+        defrag-lwm-pct 50
+        defrag-startup-minimum 10
+        read-page-cache true
+        commit-to-device true
+    }
+}

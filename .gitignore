@@ -15,3 +15,9 @@ locust/locustfiles/__pycache__/
 */configs/*
 */data/*
 */*.log
+*/*/__pycache__/
+*/*/logs/*
+*/*/log/*
+*/*/logs/*
+*/*/output/*
+configs/trial-features.conf

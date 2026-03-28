@@ -12,24 +12,29 @@ RUN set -eux && \
     -o Acquire::AllowDowngradeToInsecureRepositories=true update && \
     DEBIAN_FRONTEND=noninteractive \
     apt-get install -y --no-install-recommends \
-    curl \
-    less \
-    tar \
-    tree \
-    sudo \
-    gnupg \
-    vim \
     ca-certificates \
-    dirmngr \
-    gosu \
-    gnupg \
-    netcat-traditional \
-    wget \
     conntrack \
-    ngrep \
-    net-tools \
-    tcpdump \
+    curl \
+    dirmngr \
+    dnsutils \
+    gettext-base \
+    gnupg \
+    gosu \
     iproute2 \
+    iptables \
+    iputils-ping \
+    jq \
+    less \
+    net-tools \
+    netcat-traditional \
+    ngrep \
+    procps \
+    sudo \
+    tar \
+    tcpdump \
+    tree \
+    vim \
+    wget \
     apt-transport-https -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

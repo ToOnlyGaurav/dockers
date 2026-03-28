@@ -1,7 +1,5 @@
-# Use the official Ubuntu base image
-ARG PLATFORM=linux/amd64
+ARG PLATFORM=linux/arm64
 FROM --platform=${PLATFORM} myubuntu
-# FROM myubuntu-jammy_python
 
 # Define build arguments for version
 ARG AEROSPIKE_VERSION=8.1.1.2
@@ -35,12 +33,17 @@ RUN chmod +x ./asinstall || echo "Failed to chmod: asinstall not found"
 
 RUN ./asinstall
 
+# Install envsubst (used by entrypoint to render config template)
+RUN apt-get update && apt-get install -y --no-install-recommends gettext-base && rm -rf /var/lib/apt/lists/*
+
 RUN mkdir -p /etc/aerospike/log /etc/aerospike/config /etc/aerospike/data /etc/aerospike/smd
 
+COPY ./configs/aerospike.conf.template /etc/aerospike/config/aerospike.conf.template
 COPY ./configs/aerospike_${AEROSPIKE_MAJOR_VERSION}.conf /etc/aerospike/config/aerospike.conf
 COPY ./configs/trial-features.conf /etc/aerospike/features.conf
 
-COPY entrypoint.sh entrypoint.sh
+#COPY entrypoint.sh entrypoint.sh
+COPY entrypoint_multisite.sh entrypoint.sh
 
 ENTRYPOINT ["./entrypoint.sh"]
 
