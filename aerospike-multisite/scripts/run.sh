@@ -6,7 +6,7 @@
 #   1. docker compose up -d --build
 #   2. Wait for all 7 containers to be healthy
 #   3. Set the SC roster (required for writes)
-#   4. Quiesce the quorum node (C1) so it holds 0 partitions
+#   4. Quiesce the quorum node (D1) so it holds 0 partitions
 #   5. Verify the cluster is ready
 #
 # Usage:
@@ -26,6 +26,7 @@ SEED_IP="172.28.0.11"
 SEED_PORT="3000"
 QUORUM_CONTAINER="quorum-node"
 QUORUM_IP="172.28.0.31"
+QUORUM_ID="C1"
 
 ALL_CONTAINERS=("site1-node1" "site1-node2" "site1-node3" "site2-node1" "site2-node2" "site2-node3" "quorum-node")
 ALL_IPS=("172.28.0.11" "172.28.0.12" "172.28.0.13" "172.28.0.21" "172.28.0.22" "172.28.0.23" "172.28.0.31")
@@ -94,7 +95,7 @@ do_recluster() {
 TOTAL_STEPS=5
 echo ""
 echo -e "${BOLD}=== Aerospike Multi-Site SC Cluster Startup ===${NC}"
-echo -e "${DIM}  7 nodes | RF=3 | 3 racks | active-rack=1 | SC mode${NC}"
+echo -e "${DIM}  7 nodes | RF=4 | 3 racks | active-rack=1 | SC mode${NC}"
 echo -e "${DIM}  Namespace: ${NAMESPACE}${NC}"
 
 # =============================================================================
@@ -105,6 +106,26 @@ step 1 "Starting containers"
 if $SKIP_UP; then
     info "Skipping docker compose up (--skip-up)"
 else
+    # Stop any stale containers from previous topologies (e.g. site3-node* from a
+    # prior 10-node run). Docker Compose 'up' only manages containers defined in
+    # the current file and will leave old ones running -- they would rejoin the
+    # cluster and cause cluster_size > TOTAL_NODES.
+    info "Checking for stale containers not in current topology..."
+    stale_found=false
+    while IFS= read -r running_c; do
+        in_expected=false
+        for expected in "${ALL_CONTAINERS[@]}"; do
+            [ "$running_c" = "$expected" ] && in_expected=true && break
+        done
+        # Only touch containers that look like Aerospike cluster members
+        if ! $in_expected && echo "$running_c" | grep -qE '^(site[0-9]+-node[0-9]+|quorum-node)$'; then
+            warn "Stopping stale container: $running_c"
+            docker stop "$running_c" >/dev/null 2>&1 || true
+            stale_found=true
+        fi
+    done < <(docker ps --format '{{.Names}}' 2>/dev/null)
+    $stale_found || info "No stale containers found"
+
     cd "$PROJECT_DIR"
     if [ -n "$BUILD_FLAG" ]; then
         info "Running: docker compose up -d --build"
@@ -165,8 +186,8 @@ while true; do
         ok "Cluster formed: $cs nodes"
         break
     fi
-    if [ "$elapsed" -ge 60 ]; then
-        warn "Cluster size is $cs after 60s (expected $TOTAL_NODES). Continuing anyway..."
+    if [ "$elapsed" -ge 90 ]; then
+        warn "Cluster size is $cs after 90s (expected $TOTAL_NODES). Continuing anyway..."
         break
     fi
     sleep 3
@@ -178,25 +199,40 @@ done
 # =============================================================================
 step 3 "Setting Strong Consistency roster"
 
-# Get observed nodes
-roster_info=$(docker exec "$SEED_CONTAINER" asinfo -v "roster:namespace=${NAMESPACE}" \
-    -h "$SEED_IP" -p "$SEED_PORT" 2>/dev/null)
-observed=$(echo "$roster_info" | tr ':' '\n' | grep '^observed_nodes=' | cut -d'=' -f2)
+# Get observed nodes -- in SC mode observed_nodes can take 10-30s to populate
+# after cluster_size reaches the target, so retry with backoff.
+observed=""
+roster_info=""
+for attempt in $(seq 1 18); do
+    roster_info=$(docker exec "$SEED_CONTAINER" asinfo -v "roster:namespace=${NAMESPACE}" \
+        -h "$SEED_IP" -p "$SEED_PORT" 2>/dev/null)
+    observed=$(echo "$roster_info" | tr ':' '\n' | grep '^observed_nodes=' | cut -d'=' -f2)
+    if [ -n "$observed" ] && [ "$observed" != "null" ]; then
+        break
+    fi
+    info "observed_nodes not yet populated (attempt ${attempt}/18) -- waiting 5s..."
+    sleep 5
+done
 
 if [ -z "$observed" ] || [ "$observed" = "null" ]; then
-    fail "No observed nodes found. Is the cluster up?"
+    fail "No observed nodes found after 90s. Is the cluster up?"
     exit 1
 fi
 info "Observed nodes: $observed"
 
+# Strip the M<n>| active-rack prefix -- roster-set does NOT accept it.
+# observed_nodes looks like "M1|C1@3,B3@2,..." but roster-set expects "C1@3,B3@2,..."
+roster_nodes=$(echo "$observed" | sed 's/^M[0-9]*|//')
+info "Roster nodes (prefix stripped): $roster_nodes"
+
 # Check if roster is already set with the same nodes
 current_roster=$(echo "$roster_info" | tr ':' '\n' | grep '^roster=' | cut -d'=' -f2)
-if [ "$current_roster" = "$observed" ]; then
+if [ "$current_roster" = "$roster_nodes" ]; then
     info "Roster already matches observed nodes"
 else
     # Set roster
     result=$(docker exec "$SEED_CONTAINER" asinfo \
-        -v "roster-set:namespace=${NAMESPACE};nodes=${observed}" \
+        -v "roster-set:namespace=${NAMESPACE};nodes=${roster_nodes}" \
         -h "$SEED_IP" -p "$SEED_PORT" 2>/dev/null)
     if [ "$result" = "ok" ]; then
         ok "Roster set"
@@ -245,39 +281,27 @@ for attempt in $(seq 1 12); do
 done
 
 # =============================================================================
-# STEP 4: Quiesce the quorum node
+# STEP 4: Verify quorum node quiesce (handled automatically by quiesce-keeper)
 # =============================================================================
-step 4 "Quiescing quorum node (C1) -- pure tie-breaker"
+step 4 "Verifying quorum node (C1) quiesce state"
 
-# Check if already quiesced
-already_quiesced=$(docker exec "$QUORUM_CONTAINER" asinfo \
-    -v "namespace/${NAMESPACE}" -h "$QUORUM_IP" -p 3000 2>/dev/null \
-    | tr ';' '\n' | grep '^effective_is_quiesced=' | cut -d'=' -f2 || echo "false")
+info "C1 runs with AUTO_QUIESCE=true -- the quiesce-keeper in its entrypoint"
+info "quiesces it automatically when the cluster forms. Waiting up to 20s..."
 
-if [ "$already_quiesced" = "true" ]; then
-    ok "C1 already quiesced -- skipping"
-else
-    info "Quiescing C1 ($QUORUM_IP)..."
-    docker exec "$QUORUM_CONTAINER" asadm --enable \
-        -e "manage quiesce with ${QUORUM_IP}:${SEED_PORT}" 2>&1 | sed 's/^/  /'
-
-    info "Triggering recluster to apply quiesce..."
-    docker exec "$QUORUM_CONTAINER" asadm --enable \
-        -e "manage recluster" 2>&1 | sed 's/^/  /'
-
-    # Wait for quiesce to take effect
-    sleep 5
-
-    # Verify
+is_quiesced="false"
+for attempt in $(seq 1 10); do
     is_quiesced=$(docker exec "$QUORUM_CONTAINER" asinfo \
         -v "namespace/${NAMESPACE}" -h "$QUORUM_IP" -p 3000 2>/dev/null \
         | tr ';' '\n' | grep '^effective_is_quiesced=' | cut -d'=' -f2 || echo "false")
     if [ "$is_quiesced" = "true" ]; then
-        ok "C1 quiesced successfully -- 0 partitions, pure tie-breaker"
-    else
-        warn "Quiesce command sent but effective_is_quiesced is still false"
-        warn "It may take a few more seconds to propagate"
+        ok "C1 is quiesced (effective_is_quiesced=true) -- 0 partitions, pure tie-breaker"
+        break
     fi
+    sleep 2
+done
+if [ "$is_quiesced" != "true" ]; then
+    warn "C1 not yet quiesced after 20s -- quiesce-keeper may still be waiting for peers"
+    warn "Check 'docker logs quorum-node' for [quiesce-keeper] messages"
 fi
 
 # =============================================================================

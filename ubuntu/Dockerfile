@@ -17,7 +17,6 @@ RUN set -eux && \
     curl \
     dirmngr \
     dnsutils \
-    gettext-base \
     gnupg \
     gosu \
     iproute2 \
@@ -35,6 +34,8 @@ RUN set -eux && \
     tree \
     vim \
     wget \
+    gettext-base \
+    iptables \
     apt-transport-https -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

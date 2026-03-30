@@ -3,18 +3,22 @@
 # =============================================================================
 #
 # Topology:
-#   Site 1 (Rack 1): site1-node1  172.28.0.11
-#                     site1-node2  172.28.0.12
-#                     site1-node3  172.28.0.13
+#   DC1 (Active):
+#     Site 1 (Rack 1): site1-node1  172.28.0.11   ← all master partitions (active-rack=1)
+#                       site1-node2  172.28.0.12
+#                       site1-node3  172.28.0.13
+#     Quorum (Rack 3):  quorum-node  172.28.0.31   ← tie-breaker, quiesced (0 partitions)
 #
-#   Site 2 (Rack 2): site2-node1  172.28.0.21
-#                     site2-node2  172.28.0.22
-#                     site2-node3  172.28.0.23
+#   DC2 (Standby):
+#     Site 2 (Rack 2): site2-node1  172.28.0.21   ← replica partitions only
+#                       site2-node2  172.28.0.22
+#                       site2-node3  172.28.0.23
 #
-#   Quorum (Rack 3):  quorum-node  172.28.0.31   (tie-breaker)
+# Quorum node lives in DC1 so DC1 always forms a majority (4/7 >= min-cluster-size=4)
+# even when DC2 is fully down. If DC1 fails, DC2 alone (3 nodes) < 4 → stops (no split-brain).
 #
 # Network: 172.28.0.0/24 - single bridge, all nodes mesh to all nodes.
-# SC mode: replication-factor=3, active-rack=1, min-cluster-size=4 (prevents split-brain).
+# SC mode: replication-factor=4, active-rack=1, min-cluster-size=4.
 # Masters are pinned to Site 1 (Rack 1); quorum node is quiesced (pure tie-breaker).
 # =============================================================================
 
@@ -221,6 +225,10 @@ services:
       NODE_ID: C1
       RACK_ID: "3"
       SERVICE_ADDRESS: 172.28.0.31
+      # Quiesce-keeper: auto-quiesces this node (C1) the moment the cluster forms,
+      # preventing any partition assignment on every (re)start.
+      AUTO_QUIESCE: "true"
+      AEROSPIKE_NAMESPACE: mynamespace
     volumes:
       - quorum_node_data:/etc/aerospike/data
       - quorum_node_smd:/etc/aerospike/smd

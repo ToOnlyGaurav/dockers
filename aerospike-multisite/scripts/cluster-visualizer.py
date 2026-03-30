@@ -10,9 +10,17 @@ Requirements:
     pip install rich
 
 Usage:
-    python3 scripts/cluster-visualizer.py              # default 2s refresh
+    python3 scripts/cluster-visualizer.py              # default 2s refresh, scrollable
     python3 scripts/cluster-visualizer.py --interval 5 # 5s refresh
-    python3 scripts/cluster-visualizer.py --once        # single snapshot, no loop
+    python3 scripts/cluster-visualizer.py --once        # single snapshot, full output
+    python3 scripts/cluster-visualizer.py --compact     # hide node table / partition table
+
+Layout:
+    Full layout requires ~42 terminal lines.  When the terminal is shorter the
+    visualizer automatically switches to compact mode (SC status + partition
+    balance only; node table and partition table are hidden).  Force compact with
+    --compact, or use --once to print the full layout to stdout where you can
+    scroll freely.
 
 The script uses `docker exec` + `asinfo` to query each node, so it must
 be run on the Docker host where the containers are running.
@@ -21,6 +29,7 @@ be run on the Docker host where the containers are running.
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -44,20 +53,121 @@ except ImportError:
     sys.exit(1)
 
 # =============================================================================
-# Cluster topology definition
+# Utility helpers (needed by discovery below)
 # =============================================================================
+
+def run_cmd(cmd: list[str], timeout: int = 5) -> Optional[str]:
+    """Run a command and return stdout, or None on failure."""
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        if result.returncode == 0:
+            return result.stdout.strip()
+        return None
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+
+
+def parse_kv(text: str, sep: str = ";") -> dict:
+    """Parse 'key=value<sep>key=value...' into a dict."""
+    result = {}
+    if not text:
+        return result
+    for part in text.split(sep):
+        if "=" in part:
+            k, v = part.split("=", 1)
+            result[k.strip()] = v.strip()
+    return result
+
+
+# =============================================================================
+# Cluster topology — auto-discovered from Docker + Aerospike
+# =============================================================================
+# The only things you need to configure are the namespace name and the
+# rack→label mappings.  All per-node details (node-id, rack-id, IP) are
+# fetched live from Aerospike so they are always accurate.
 
 NAMESPACE = "mynamespace"
 
-NODES = [
-    {"container": "site1-node1", "ip": "172.28.0.11", "node_id": "A1", "rack_id": 1, "site": "Site 1", "dc": "DC1"},
-    {"container": "site1-node2", "ip": "172.28.0.12", "node_id": "A2", "rack_id": 1, "site": "Site 1", "dc": "DC1"},
-    {"container": "site1-node3", "ip": "172.28.0.13", "node_id": "A3", "rack_id": 1, "site": "Site 1", "dc": "DC1"},
-    {"container": "site2-node1", "ip": "172.28.0.21", "node_id": "B1", "rack_id": 2, "site": "Site 2", "dc": "DC2"},
-    {"container": "site2-node2", "ip": "172.28.0.22", "node_id": "B2", "rack_id": 2, "site": "Site 2", "dc": "DC2"},
-    {"container": "site2-node3", "ip": "172.28.0.23", "node_id": "B3", "rack_id": 2, "site": "Site 2", "dc": "DC2"},
-    {"container": "quorum-node", "ip": "172.28.0.31", "node_id": "C1", "rack_id": 3, "site": "Quorum", "dc": "DC1"},
-]
+# How rack IDs map to human-readable site and DC labels.
+# Racks not listed fall back to "Rack {n}" / "DC{n}".
+RACK_SITE_LABEL: dict = {1: "Site 1", 2: "Site 2", 3: "Quorum"}
+RACK_DC_LABEL:   dict = {1: "DC1",    2: "DC2",    3: "DC1"}
+
+# Optional: only scan containers whose name contains this string.
+# Leave empty to probe every running container.
+AEROSPIKE_CONTAINER_FILTER = ""
+
+
+def _probe_container(container: str) -> Optional[dict]:
+    """Return node metadata for one container, or None if it is not Aerospike."""
+    # Quick reachability check — exits fast for non-Aerospike containers
+    if not run_cmd(
+        ["docker", "exec", container, "asinfo", "-v", "status", "-p", "3000"],
+        timeout=2,
+    ):
+        return None
+
+    # node-id as configured in aerospike.conf  (e.g. "A1", "B2", "C1")
+    node_id = container
+    svc_cfg = run_cmd(
+        ["docker", "exec", container,
+         "asinfo", "-v", "get-config:context=service", "-p", "3000"],
+        timeout=3,
+    )
+    if svc_cfg:
+        raw_id = parse_kv(svc_cfg).get("node-id", "")
+        if raw_id:
+            node_id = raw_id.upper()
+
+    # Service IP — asinfo -v service returns "IP:port[,IP:port,…]"
+    ip = "127.0.0.1"
+    svc_addr = run_cmd(
+        ["docker", "exec", container, "asinfo", "-v", "service", "-p", "3000"],
+        timeout=3,
+    )
+    if svc_addr:
+        ip = svc_addr.split(",")[0].split(":")[0].strip()
+
+    # rack-id from the namespace configuration
+    rack_id = 0
+    ns_cfg = run_cmd(
+        ["docker", "exec", container,
+         "asinfo", "-v", f"get-config:context=namespace;id={NAMESPACE}", "-p", "3000"],
+        timeout=3,
+    )
+    if ns_cfg:
+        rack_id = int(parse_kv(ns_cfg).get("rack-id", 0))
+
+    return {
+        "container": container,
+        "ip":        ip,
+        "node_id":   node_id,
+        "rack_id":   rack_id,
+        "site":      RACK_SITE_LABEL.get(rack_id, f"Rack {rack_id}"),
+        "dc":        RACK_DC_LABEL.get(rack_id,   f"DC{rack_id}"),
+    }
+
+
+def _discover_nodes() -> list[dict]:
+    """Probe all running Docker containers in parallel and return Aerospike nodes."""
+    containers_raw = run_cmd(["docker", "ps", "--format", "{{.Names}}"])
+    if not containers_raw:
+        return []
+    containers = [
+        c for c in containers_raw.strip().splitlines()
+        if not AEROSPIKE_CONTAINER_FILTER or AEROSPIKE_CONTAINER_FILTER in c
+    ]
+    with ThreadPoolExecutor(max_workers=min(len(containers), 16)) as ex:
+        results = list(ex.map(_probe_container, containers))
+    nodes = [r for r in results if r is not None]
+    nodes.sort(key=lambda n: (n["rack_id"], n["node_id"]))
+    return nodes
+
+
+NODES = _discover_nodes()
+if not NODES:
+    print("ERROR: No Aerospike nodes found. Are the containers running?")
+    sys.exit(1)
 
 
 @dataclass
@@ -105,7 +215,8 @@ class NodeStatus:
     # Additional
     client_connections: int = 0
     cpu_pct: int = 0
-    free_mem_pct: int = 0
+    free_mem_pct: int = 0       # system free memory %
+    min_cluster_size: int = 0
     error: str = ""
 
 
@@ -117,36 +228,19 @@ class ClusterState:
     poll_duration_ms: float = 0.0
     roster_nodes: str = ""
     observed_nodes: str = ""
+    pending_roster: str = ""
     replication_factor: int = 0
     active_rack: int = 0
+    min_cluster_size: int = 0
+    nodes_quiesced: int = 0
+    total_unavailable_partitions: int = 0
+    total_dead_partitions: int = 0
+    total_migrate_remaining: int = 0
 
 
 # =============================================================================
 # Data collection
 # =============================================================================
-
-def run_cmd(cmd: list[str], timeout: int = 5) -> Optional[str]:
-    """Run a command and return stdout, or None on failure."""
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        if result.returncode == 0:
-            return result.stdout.strip()
-        return None
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        return None
-
-
-def parse_kv(text: str, sep: str = ";") -> dict:
-    """Parse 'key=value<sep>key=value...' into a dict."""
-    result = {}
-    if not text:
-        return result
-    for part in text.split(sep):
-        if "=" in part:
-            k, v = part.split("=", 1)
-            result[k.strip()] = v.strip()
-    return result
-
 
 def get_docker_state(container: str) -> tuple[bool, str]:
     """Return (running, health) for a container."""
@@ -241,6 +335,7 @@ def poll_node(node_def: dict) -> NodeStatus:
     ns.cluster_key = stats.get("cluster_key", "")
     ns.uptime = int(stats.get("uptime", 0))
     ns.client_connections = int(stats.get("client_connections", 0))
+    ns.free_mem_pct = int(stats.get("system_free_mem_pct", 0))
 
     # Check if this node is the principal
     principal_raw = run_cmd([
@@ -277,6 +372,7 @@ def poll_node(node_def: dict) -> NodeStatus:
         ns.effective_replication_factor = int(ns_stats.get("effective_replication_factor", 0))
         ns.active_rack = int(ns_stats.get("active-rack", 0))
         ns.quiesced = ns_stats.get("effective_is_quiesced", "false") == "true"
+        ns.used_bytes_memory = int(ns_stats.get("memory_used_bytes", 0))
 
     # Partition details
     part_raw = run_cmd([
@@ -294,19 +390,32 @@ def poll_node(node_def: dict) -> NodeStatus:
     return ns
 
 
-def poll_roster(container: str, ip: str) -> tuple[str, str]:
-    """Get the roster and observed_nodes from a reachable node."""
+def poll_roster(container: str, ip: str) -> tuple[str, str, str]:
+    """Get the roster, observed_nodes, and pending_roster from a reachable node."""
     raw = run_cmd([
         "docker", "exec", container,
         "asinfo", "-v", f"roster:namespace={NAMESPACE}", "-h", ip, "-p", "3000",
     ])
     roster = ""
     observed = ""
+    pending = ""
     if raw:
         kv = parse_kv(raw, sep=":")
         roster = kv.get("roster", "null")
         observed = kv.get("observed_nodes", "null")
-    return roster, observed
+        pending = kv.get("pending_roster", "")
+    return roster, observed, pending
+
+
+def poll_min_cluster_size(container: str, ip: str) -> int:
+    """Get the current min-cluster-size from service config."""
+    raw = run_cmd([
+        "docker", "exec", container,
+        "asinfo", "-v", "get-config:context=service", "-h", ip, "-p", "3000",
+    ])
+    if raw:
+        return int(parse_kv(raw).get("min-cluster-size", 0))
+    return 0
 
 
 def poll_cluster() -> ClusterState:
@@ -326,21 +435,30 @@ def poll_cluster() -> ClusterState:
     for node_def in NODES:
         state.nodes.append(results[node_def["node_id"]])
 
-    # Get roster from the first reachable node
+    # Get roster and service config from the first reachable node
     for ns in state.nodes:
         if ns.reachable:
-            state.roster_nodes, state.observed_nodes = poll_roster(ns.container, ns.ip)
+            state.roster_nodes, state.observed_nodes, state.pending_roster = poll_roster(ns.container, ns.ip)
             ns.roster_set = state.roster_nodes not in ("null", "")
             if ns.effective_replication_factor > 0:
                 state.replication_factor = ns.effective_replication_factor
             if ns.active_rack > 0:
                 state.active_rack = ns.active_rack
+            state.min_cluster_size = poll_min_cluster_size(ns.container, ns.ip)
             break
 
     # Mark roster_set on all reachable nodes
     for ns in state.nodes:
         if ns.reachable:
             ns.roster_set = state.roster_nodes not in ("null", "")
+
+    # Aggregated health metrics
+    state.nodes_quiesced = sum(1 for n in state.nodes if n.reachable and n.quiesced)
+    state.total_unavailable_partitions = sum(n.unavailable_partitions for n in state.nodes if n.reachable)
+    state.total_dead_partitions = sum(n.dead_partitions for n in state.nodes if n.reachable)
+    state.total_migrate_remaining = sum(
+        n.migrate_tx_remaining + n.migrate_rx_remaining for n in state.nodes if n.reachable
+    )
 
     elapsed = time.time() - start
     state.poll_time = time.time()
@@ -474,8 +592,11 @@ def render_node_card(ns: NodeStatus) -> Panel:
     lines.append(f" Cn:{ns.client_connections}\n", style="dim")
     lines.append(f"Obj {ns.objects:,}")
     lines.append(f" M:{ns.master_objects:,} P:{ns.prole_objects:,}\n", style="dim")
-    lines.append(f"Disk {format_bytes(ns.used_bytes_disk)}")
-    lines.append(f" {ns.avail_pct}%free", style="dim")
+    lines.append(f"Disk {format_bytes(ns.used_bytes_disk)}  {ns.avail_pct}%free\n", style="dim")
+    lines.append(f"Mem  {format_bytes(ns.used_bytes_memory)}")
+    if ns.free_mem_pct > 0:
+        mem_style = "dim" if ns.free_mem_pct > 30 else ("yellow" if ns.free_mem_pct > 15 else "red")
+        lines.append(f"  Sys:{ns.free_mem_pct}%", style=mem_style)
 
     # Partition + migration on one line
     has_part_line = False
@@ -551,8 +672,19 @@ def render_cluster_header(state: ClusterState) -> Panel:
     total_objects = sum(n.objects for n in state.nodes if n.reachable)
     total_master = sum(n.master_objects for n in state.nodes if n.reachable)
     any_stop_writes = any(n.stop_writes and not n.quiesced for n in state.nodes if n.reachable)
-    cluster_keys = set(n.cluster_key for n in state.nodes if n.reachable and n.cluster_key)
+    # cluster_key="0" means "no cluster formed" (orphaned node), not a real cluster.
+    # Exclude it so orphaned nodes don't trigger a false split-brain warning.
+    cluster_keys = set(
+        n.cluster_key
+        for n in state.nodes
+        if n.reachable and n.cluster_key and n.cluster_key != "0"
+    )
     split_brain = len(cluster_keys) > 1
+    # Nodes reachable but not in any cluster (cluster_key=0, cluster_size=0)
+    orphaned_nodes = sum(
+        1 for n in state.nodes
+        if n.reachable and (not n.cluster_key or n.cluster_key == "0")
+    )
 
     # Cluster health determination
     if reachable == 0:
@@ -561,6 +693,8 @@ def render_cluster_header(state: ClusterState) -> Panel:
         health_text = Text(" SPLIT BRAIN  ", style="bold white on red")
     elif any_stop_writes:
         health_text = Text(" STOP WRITES  ", style="bold white on dark_orange")
+    elif orphaned_nodes > 0:
+        health_text = Text(" PARTITIONED  ", style="bold white on dark_orange")
     elif reachable < total_nodes:
         health_text = Text("  DEGRADED    ", style="bold black on yellow")
     elif any(n.dead_partitions > 0 for n in state.nodes if n.reachable):
@@ -579,7 +713,7 @@ def render_cluster_header(state: ClusterState) -> Panel:
     line1.append(f"    Nodes: {reachable}/{total_nodes} reachable")
     if running != total_nodes:
         line1.append(f" ({running} running)", style="yellow")
-    line1.append(f"    Objects: {total_objects:,} total, {total_master:,} masters")
+    line1.append(f"    Records: {total_objects:,} total, {total_master:,} master-records")
     line1.append(f"    Poll: {state.poll_duration_ms:.0f}ms  {timestamp}", style="dim")
 
     sc_on = any(n.strong_consistency for n in state.nodes if n.reachable)
@@ -606,13 +740,45 @@ def render_cluster_header(state: ClusterState) -> Panel:
         line2.append("  Active-Rack: ", style="bold")
         line2.append(f"R{ar}", style="bright_green bold")
 
-    # Split brain warning
-    header_group_items = [line1, line2]
+    # Aggregate health line (shown only when there is something notable)
+    line3_parts = []
+    if state.total_unavailable_partitions > 0:
+        line3_parts.append(Text(f"  UA-Partitions:{state.total_unavailable_partitions}", style="bold red"))
+    if state.total_dead_partitions > 0:
+        line3_parts.append(Text(f"  Dead-Partitions:{state.total_dead_partitions}", style="bold red"))
+    if state.total_migrate_remaining > 0:
+        line3_parts.append(Text(f"  Migrating:{state.total_migrate_remaining}", style="bold cyan"))
+    if state.nodes_quiesced > 0:
+        line3_parts.append(Text(f"  Quiesced:{state.nodes_quiesced}", style="steel_blue"))
+    if state.min_cluster_size > 0:
+        margin = reachable - state.min_cluster_size
+        if margin > 0:
+            line3_parts.append(Text(f"  MCS:{state.min_cluster_size}(margin:+{margin})", style="dim green"))
+        elif margin == 0:
+            line3_parts.append(Text(f"  MCS:{state.min_cluster_size}(AT QUORUM EDGE)", style="bold yellow"))
+        else:
+            line3_parts.append(Text(f"  MCS:{state.min_cluster_size}(BELOW by {-margin})", style="bold red"))
+    if line3_parts:
+        line3 = Text()
+        for part in line3_parts:
+            line3.append_text(part)
+        header_group_items = [line1, line2, line3]
+    else:
+        header_group_items = [line1, line2]
+
+    # Split brain / partition warnings
     if split_brain:
         warn = Text(
             f"  WARNING: Split brain detected! {len(cluster_keys)} distinct cluster keys: "
             + ", ".join(cluster_keys),
             style="bold red",
+        )
+        header_group_items.append(warn)
+    elif orphaned_nodes > 0:
+        warn = Text(
+            f"  WARNING: {orphaned_nodes} node(s) reachable but not in any cluster "
+            f"(network partition or below min-cluster-size)",
+            style="bold dark_orange",
         )
         header_group_items.append(warn)
 
@@ -645,9 +811,23 @@ def render_topology_diagram(state: ClusterState) -> Panel:
     ar = state.active_rack
     active_rack_str = f"  active-rack:[bright_green]R{ar}(masters)[/bright_green]" if ar > 0 else ""
 
+    # Safety margin: nodes above min-cluster-size before writes halt
+    mcs = state.min_cluster_size
+    reachable_count = sum(1 for n in nodes if n.reachable)
+    if mcs > 0:
+        margin = reachable_count - mcs
+        if margin > 0:
+            mcs_str = f"  mcs:[green]{mcs}(+{margin} margin)[/green]"
+        elif margin == 0:
+            mcs_str = f"  mcs:[bold yellow]{mcs}(AT EDGE)[/bold yellow]"
+        else:
+            mcs_str = f"  mcs:[bold red]{mcs}(BELOW by {-margin})[/bold red]"
+    else:
+        mcs_str = "  mcs:?"
+
     lines = []
-    lines.append(f"  DC1: Site1(R1)[{nstyle('A1')} {nstyle('A2')} {nstyle('A3')}] + Quorum(R3)[{nstyle('C1')}] <--> DC2: Site2(R2)[{nstyle('B1')} {nstyle('B2')} {nstyle('B3')}]")
-    lines.append(f"  RF:{rf} rack-aware  Mesh:7-node  min-cluster:4{principal_str}{active_rack_str}")
+    lines.append(f"  DC1[ Site1(R1)[{nstyle('A1')} {nstyle('A2')} {nstyle('A3')}] + Quorum(R3)[{nstyle('C1')}] ]  <-->  DC2[ Site2(R2)[{nstyle('B1')} {nstyle('B2')} {nstyle('B3')}] ]")
+    lines.append(f"  RF:{rf} rack-aware  7-node{mcs_str}{principal_str}{active_rack_str}")
 
     text = "\n".join(lines)
     return Panel(
@@ -657,48 +837,175 @@ def render_topology_diagram(state: ClusterState) -> Panel:
     )
 
 
+def render_sc_status_panel(state: ClusterState) -> Panel:
+    """Render a Strong Consistency status panel: roster vs observed, pending, quorum health."""
+    lines = Text()
+
+    # Roster
+    roster = state.roster_nodes or "null"
+    observed = state.observed_nodes or "null"
+
+    # Strip M<n>| prefix from roster/observed for comparison
+    def strip_prefix(s: str) -> str:
+        return re.sub(r"^M\d+\|", "", s) if s else s
+
+    roster_clean = strip_prefix(roster)
+    observed_clean = strip_prefix(observed)
+
+    roster_style = "green" if roster not in ("null", "") else "red"
+    lines.append("  Roster:   ", style="bold")
+    lines.append(roster if roster else "null", style=roster_style)
+    lines.append("\n")
+
+    lines.append("  Observed: ", style="bold")
+    if observed in ("null", ""):
+        lines.append("null", style="yellow")
+    elif roster_clean and observed_clean and sorted(roster_clean.split(",")) == sorted(observed_clean.split(",")):
+        lines.append(observed, style="green")
+        lines.append("  ✓ in sync", style="dim green")
+    else:
+        lines.append(observed, style="yellow")
+        lines.append("  ⚠ DIFFERS from roster", style="bold yellow")
+    lines.append("\n")
+
+    pending_clean = strip_prefix(state.pending_roster) if state.pending_roster else ""
+    pending_differs = (
+        pending_clean
+        and pending_clean not in ("null", "")
+        and sorted(pending_clean.split(",")) != sorted(roster_clean.split(","))
+    )
+    if pending_differs:
+        lines.append("  Pending:  ", style="bold yellow")
+        lines.append(state.pending_roster, style="yellow")
+        lines.append("  (recluster needed)", style="bold yellow")
+        lines.append("\n")
+
+    # Quorum / SC metrics
+    reachable = sum(1 for n in state.nodes if n.reachable)
+    mcs = state.min_cluster_size
+    lines.append(f"\n  Cluster size: ", style="bold")
+    lines.append(str(reachable), style="green bold" if reachable > 0 else "red bold")
+    if mcs > 0:
+        margin = reachable - mcs
+        lines.append(f"  MCS: {mcs}  ", style="bold")
+        if margin > 0:
+            lines.append(f"margin: +{margin} node(s) to spare", style="green")
+        elif margin == 0:
+            lines.append("AT QUORUM EDGE — one more failure stops writes", style="bold yellow")
+        else:
+            lines.append(f"BELOW MCS by {-margin} — writes halted", style="bold red")
+
+    lines.append(f"\n  SC enabled: ", style="bold")
+    sc_on = any(n.strong_consistency for n in state.nodes if n.reachable)
+    lines.append("yes" if sc_on else "NO", style="green bold" if sc_on else "red bold")
+
+    lines.append(f"  Quiesced nodes: ", style="bold")
+    lines.append(str(state.nodes_quiesced), style="steel_blue bold" if state.nodes_quiesced > 0 else "dim")
+
+    ar = state.active_rack
+    if ar > 0:
+        lines.append(f"  Active-Rack: R{ar} (masters pinned)", style="bold bright_green")
+
+    if state.total_unavailable_partitions > 0 or state.total_dead_partitions > 0:
+        lines.append(f"\n  ")
+        lines.append(f"⚠ Unavailable partitions: {state.total_unavailable_partitions}", style="bold red")
+        if state.total_dead_partitions > 0:
+            lines.append(f"  Dead: {state.total_dead_partitions}", style="bold red")
+
+    # Determine border style
+    if state.total_dead_partitions > 0 or (mcs > 0 and reachable < mcs):
+        border = "red"
+    elif state.total_unavailable_partitions > 0 or (mcs > 0 and reachable == mcs):
+        border = "yellow"
+    elif roster not in ("null", "") and sc_on:
+        border = "green"
+    else:
+        border = "dim"
+
+    return Panel(
+        lines,
+        title="[bold]SC Strong Consistency Status[/bold]",
+        border_style=border,
+    )
+
+
 def render_node_table(state: ClusterState) -> Table:
-    """Render a detailed table of all nodes."""
-    t = Table(title="Node Details", border_style="dim", show_lines=True)
-    t.add_column("Node", style="bold", min_width=6)
+    """Render a detailed table of all nodes including partition distribution."""
+    t = Table(title="Node Details", border_style="dim", show_lines=False)
+    t.add_column("Node", style="bold", min_width=4)
+    t.add_column("Rack", justify="center", min_width=4)
     t.add_column("Container", min_width=12)
     t.add_column("IP", min_width=13)
     t.add_column("Status", min_width=10, justify="center")
-    t.add_column("Cluster", justify="center", min_width=8)
+    t.add_column("C.Sz", justify="center", min_width=4)
     t.add_column("Objects", justify="right", min_width=9)
-    t.add_column("Masters", justify="right", min_width=9)
+    t.add_column("Mem Used", justify="right", min_width=10)
     t.add_column("Disk Used", justify="right", min_width=10)
     t.add_column("Avail%", justify="right", min_width=7)
+    # Partition distribution columns
+    t.add_column("Pt-M", justify="right", min_width=5, style="green")
+    t.add_column("Pt-R", justify="right", min_width=5, style="cyan")
+    t.add_column("Pt-Own", justify="right", min_width=6, style="bold")
+    t.add_column("M%", justify="right", min_width=4)
+    # Health columns
     t.add_column("Mig", justify="right", min_width=5)
+    t.add_column("UA", justify="right", min_width=4)
+    t.add_column("Dead", justify="right", min_width=4)
+    t.add_column("Qsc", justify="center", min_width=3)
     t.add_column("Conns", justify="right", min_width=6)
     t.add_column("Uptime", justify="right", min_width=10)
+
+    total_pt_m = total_pt_r = total_pt_tot = 0
 
     for n in state.nodes:
         status = node_status_icon(n)
         if not n.reachable:
             t.add_row(
-                n.node_id, n.container, n.ip, status,
-                "-", "-", "-", "-", "-", "-", "-", "-",
+                n.node_id, str(n.rack_id), n.container, n.ip, status,
+                "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-",
                 style="dim",
             )
         else:
             mig = n.migrate_tx_remaining + n.migrate_rx_remaining
             mig_str = str(mig) if mig > 0 else "-"
+            ua_str = Text(str(n.unavailable_partitions), style="red bold") if n.unavailable_partitions > 0 else Text("-", style="dim")
+            dead_str = Text(str(n.dead_partitions), style="red bold") if n.dead_partitions > 0 else Text("-", style="dim")
+            qsc_str = Text("Y", style="steel_blue bold") if n.quiesced else Text("-", style="dim")
+            repl = n.partitions_replica1 + n.partitions_replica2
+            master_pct = f"{n.partitions_master / 4096 * 100:.0f}%" if n.partitions_master > 0 else "-"
+            total_pt_m += n.partitions_master
+            total_pt_r += repl
+            total_pt_tot += n.partitions_total_owned
             t.add_row(
                 n.node_id,
+                str(n.rack_id),
                 n.container,
                 n.ip,
                 status,
                 str(n.cluster_size),
                 f"{n.objects:,}",
-                f"{n.master_objects:,}",
+                format_bytes(n.used_bytes_memory),
                 format_bytes(n.used_bytes_disk),
                 f"{n.avail_pct}%",
+                str(n.partitions_master),
+                str(repl),
+                str(n.partitions_total_owned),
+                master_pct,
                 mig_str,
+                ua_str,
+                dead_str,
+                qsc_str,
                 str(n.client_connections),
                 format_uptime(n.uptime),
             )
 
+    t.add_row(
+        "TOT", "", "", "", "", "",
+        "-", "-", "-", "-",
+        str(total_pt_m), str(total_pt_r), str(total_pt_tot), "100%",
+        "-", "-", "-", "-", "-", "-",
+        style="bold",
+    )
     return t
 
 
@@ -751,7 +1058,7 @@ def render_partition_balance(state: ClusterState) -> Panel:
     for n in reachable:
         racks.setdefault(n.rack_id, []).append(n)
 
-    rack_labels = {1: "DC1/Site1", 2: "DC2/Site2", 3: "DC1/Quorum"}
+    rack_labels = {1: "Site1", 2: "Site2", 3: "Quorum"}
     rack_colors = {1: "blue", 2: "magenta", 3: "yellow"}
 
     lines = Text()
@@ -816,48 +1123,88 @@ def render_partition_balance(state: ClusterState) -> Panel:
     )
 
 
-def build_dashboard(state: ClusterState) -> Group:
-    """Assemble the full compact dashboard layout."""
+def build_dashboard(state: ClusterState, compact: bool = False) -> Group:
+    """Assemble the full dashboard layout.
+
+    compact=True hides the node detail table and partition table to fit
+    smaller terminals.  The live loop auto-enables compact when the terminal
+    height is below COMPACT_HEIGHT_THRESHOLD.
+    """
     # Header
     header = render_cluster_header(state)
 
-    # Group nodes by site
-    site1 = [n for n in state.nodes if n.site == "Site 1"]
-    site2 = [n for n in state.nodes if n.site == "Site 2"]
-    quorum = [n for n in state.nodes if n.site == "Quorum"]
-
-    # Site panels
     ar = state.active_rack
-    site1_panel = render_site_panel("Site 1", site1, "blue", active_rack=ar)
-    quorum_panel = render_site_panel("Quorum", quorum, "yellow", active_rack=ar)
-    site2_panel = render_site_panel("Site 2", site2, "magenta", active_rack=ar)
 
-    # DC panels: DC1 = Site 1 + Quorum, DC2 = Site 2
-    dc1_panel = render_dc_panel("DC1", [site1_panel, quorum_panel], "bright_green")
-    dc2_panel = render_dc_panel("DC2", [site2_panel], "bright_red")
+    # Build DC → site → nodes mapping dynamically from discovered topology
+    dc_map: dict[str, dict[str, list]] = {}
+    for n in state.nodes:
+        dc_map.setdefault(n.dc, {}).setdefault(n.site, []).append(n)
 
-    # DC row: both DCs (Columns will place side by side if terminal is wide enough)
-    dc_row = Columns([dc1_panel, dc2_panel], padding=(0, 1), expand=False)
+    _DC_COLORS   = ["blue", "magenta", "green", "yellow", "cyan"]
+    _SITE_COLORS = ["blue", "magenta", "yellow", "green", "cyan", "white"]
 
-    # Topology diagram (compact)
-    topo = render_topology_diagram(state)
+    dc_panels = []
+    for dc_idx, dc_name in enumerate(sorted(dc_map)):
+        dc_color = _DC_COLORS[dc_idx % len(_DC_COLORS)]
+        sites = dc_map[dc_name]
+        has_active = ar > 0 and any(
+            n.rack_id == ar for ns_list in sites.values() for n in ns_list
+        )
+        site_panels = []
+        for site_idx, site_name in enumerate(sorted(sites)):
+            nodes_in_site = sites[site_name]
+            rack_id = nodes_in_site[0].rack_id if nodes_in_site else 0
+            site_color = _SITE_COLORS[site_idx % len(_SITE_COLORS)]
+            site_panels.append(
+                render_site_panel(
+                    f"{site_name} (R{rack_id})", nodes_in_site, site_color, active_rack=ar
+                )
+            )
+        dc_title = f"[bold {dc_color}]{dc_name}{'  — Active' if has_active else ''}[/bold {dc_color}]"
+        dc_panels.append(Panel(
+            Columns(site_panels, padding=(0, 1), expand=False),
+            title=dc_title, border_style=dc_color, padding=(0, 1),
+        ))
 
-    # Partition table + balance side by side
-    part_table = render_partition_table(state)
+    dc_row = Columns(dc_panels, padding=(0, 1), expand=False)
+
+    # SC status panel (always shown)
+    sc_panel = render_sc_status_panel(state)
+
+    # Partition balance (always shown)
     part_balance = render_partition_balance(state)
-    partition_row = Columns([part_table, part_balance], padding=(0, 2), expand=False)
+
+    if compact:
+        # Compact: SC panel + partition balance side by side; no node table or partition table
+        bottom_row = Columns([sc_panel, part_balance], padding=(0, 2), expand=False)
+        return Group(header, dc_row, bottom_row)
+
+    # Full layout: SC status | partition balance — same row
+    middle_row = Columns([sc_panel, part_balance], padding=(0, 2), expand=False)
+
+    # Node detail table (includes partition distribution) full-width below
+    node_table = render_node_table(state)
 
     return Group(
         header,
         dc_row,
-        topo,
-        partition_row,
+        middle_row,
+        node_table,
     )
+
+
+# Keep render_dc_panel available for potential future use
+
 
 
 # =============================================================================
 # Main
 # =============================================================================
+
+# Auto-switch to compact layout when the terminal is shorter than this.
+# Full layout needs ~42 lines; compact needs ~28.
+COMPACT_HEIGHT_THRESHOLD = 42
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -869,7 +1216,11 @@ def main():
     )
     parser.add_argument(
         "--once", action="store_true",
-        help="Print a single snapshot and exit",
+        help="Print a single snapshot and exit (full output, terminal scroll works)",
+    )
+    parser.add_argument(
+        "--compact", action="store_true",
+        help="Hide node detail table and partition table to reduce height",
     )
     args = parser.parse_args()
 
@@ -877,17 +1228,19 @@ def main():
 
     if args.once:
         state = poll_cluster()
-        dashboard = build_dashboard(state)
+        dashboard = build_dashboard(state, compact=args.compact)
         console.print(dashboard)
         return
 
-    # Live loop
-    console.clear()
+    # Live loop — screen=True uses the full terminal properly.
+    # Auto-compact activates when the terminal is shorter than COMPACT_HEIGHT_THRESHOLD.
     try:
         with Live(console=console, refresh_per_second=1, screen=True) as live:
             while True:
+                term_height = shutil.get_terminal_size().lines
+                compact = args.compact or (term_height < COMPACT_HEIGHT_THRESHOLD)
                 state = poll_cluster()
-                dashboard = build_dashboard(state)
+                dashboard = build_dashboard(state, compact=compact)
                 live.update(dashboard)
                 time.sleep(args.interval)
     except KeyboardInterrupt:

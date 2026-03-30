@@ -34,7 +34,8 @@ RUN chmod +x ./asinstall || echo "Failed to chmod: asinstall not found"
 RUN ./asinstall
 
 # Install envsubst (used by entrypoint to render config template)
-RUN apt-get update && apt-get install -y --no-install-recommends gettext-base && rm -rf /var/lib/apt/lists/*
+# Install iptables (used by simulate-failures.sh for network partition simulation)
+RUN apt-get update && apt-get install -y --no-install-recommends gettext-base iptables && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /etc/aerospike/log /etc/aerospike/config /etc/aerospike/data /etc/aerospike/smd
 
