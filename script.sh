@@ -10,6 +10,7 @@ ports=""
 volume=""
 volume_mapping=""
 args=""
+network=""
 with_docker_compose="false"
 shell_command="bash"
 
@@ -110,7 +111,12 @@ function docker_run() {
         done
       fi
 
-      docker run --cap-add CAP_NET_ADMIN --privileged -d --rm ${docker_ports} -v ./remote:/usr/share/remote:ro ${docker_volumes} --name ${name} -it ${name}
+      docker_network=""
+      if [ -n "${network}" ]; then
+        docker_network="--network ${network}"
+      fi
+
+      docker run --cap-add CAP_NET_ADMIN --privileged -d --rm ${docker_ports} -v ./remote:/usr/share/remote:ro ${docker_volumes} ${docker_network} --name ${name} -it ${name}
     fi
 }
 

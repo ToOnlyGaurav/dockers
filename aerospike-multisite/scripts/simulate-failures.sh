@@ -225,7 +225,8 @@ get_ns_stat() {
 # Recluster by trying all running nodes until the principal accepts
 do_recluster() {
     local label="${1:-Recluster}"
-    audit_log "ASINFO" "do_recluster: $label"
+    audit_log "ASINFO" "do_recluster: $label -- trying all running nodes"
+    info "$label: trying all running nodes..."
     for i in "${!ALL_CONTAINERS[@]}"; do
         local state
         state=$(container_state "${ALL_CONTAINERS[$i]}")
@@ -233,16 +234,19 @@ do_recluster() {
             continue
         fi
         local result
+        info "  -> ${ALL_CONTAINERS[$i]}: asinfo -v \"recluster:\""
         log_cmd "docker exec ${ALL_CONTAINERS[$i]} asinfo -v \"recluster:\" -h ${ALL_IPS[$i]} -p 3000 -t $ASINFO_TIMEOUT"
         result=$(docker exec "${ALL_CONTAINERS[$i]}" asinfo -v "recluster:" \
             -h "${ALL_IPS[$i]}" -p 3000 -t "$ASINFO_TIMEOUT" 2>/dev/null || true)
-        log_result "-> $result"
+        log_result "-> ${ALL_CONTAINERS[$i]}: $result"
         if [ "$result" = "ok" ]; then
+            audit_log "ASINFO" "  -> $label accepted by ${ALL_CONTAINERS[$i]}"
             ok "$label accepted by ${ALL_CONTAINERS[$i]}"
             return 0
         fi
+        info "     (result: ${result:-<empty>} -- not principal, trying next)"
     done
-    audit_log "ASINFO" "  -> recluster not accepted by any node"
+    audit_log "ASINFO" "  -> $label not accepted by any node"
     warn "$label not accepted by any node"
     return 1
 }

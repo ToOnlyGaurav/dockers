@@ -69,7 +69,7 @@ The quorum node (C1) lives in **DC1**, giving DC1 a permanent 4-node majority (3
 | Namespace | `mynamespace` | `mynamespace` |
 | Replication factor | 4 | 4 |
 | `active-rack` | 1 (Site1 = primary) | **2** (Site2 = primary — user-modified) |
-| `min-cluster-size` | 4 (split-brain prevention) | **3** (user-modified) |
+| `min-cluster-size` | 4 (split-brain prevention) | 4 |
 | `strong-consistency` | true | true |
 | `commit-to-device` | true | true |
 | Heartbeat interval | 250 ms | 250 ms |
@@ -976,69 +976,178 @@ ms_quorum_node_data    ms_quorum_node_smd     ms_quorum_node_log
 
 ## Failure Scenarios Analysis
 
-All scenarios below assume the **design-intent configuration** (`active-rack=1`, `min-cluster-size=4`). `validate-scenarios.sh` detects the actual `active-rack` and `min-cluster-size` at runtime and adjusts assertions accordingly.
+> **Baseline:** `active-rack=1` — Site 1 holds all 4096 master partitions (~1365 per node).
+> With `active-rack=2` the Site 1 / Site 2 roles reverse.
+> **SC read policy:** In `strong-consistency=true` mode, reads go to master by default — read availability equals write availability per partition. A relaxed client read policy (non-master replica) can survive master loss but sacrifices linearizability.
+
+### Legend
+
+| Symbol | Meaning |
+|---|---|
+| ✅ Full | All 4096 partitions available |
+| ⚠️ ~67% | ~2731 / 4096 partitions available (2 of 3 Site1 nodes up) |
+| ⚠️ ~33% | ~1365 / 4096 partitions available (1 of 3 Site1 nodes up) |
+| ❌ None | All operations halted (cluster below MCS or all masters lost) |
+| ⏳ Brief | Short interruption during operation (typically < 10 s) |
+| ⚠️ RF↓ | Accessible but replication factor reduced — durability at risk |
+| ⚠️ Diverged | Both sides writable but writing different values to the same keys |
+
+---
 
 ### Node Failures
 
-| # | Nodes Stopped | Remaining | Cluster | Writes? | Partitions | Auto-recover? | Recovery |
-|---|---|---|---|---|---|---|---|
-| **N1** | 1 replica/quorum node | 6 | 6 ≥ 4 ✓ | **Yes** | 0 unavailable (masters untouched) | Yes | R1 / R2 |
-| **N2** | C1 (Quorum) | 6 | 6 ≥ 4 ✓ | **Yes** | 0 unavailable | Yes, but tie-breaker lost | R1 / R2 + re-quiesce C1 |
-| **N3** | 1 Site1 master node | 6 | 6 ≥ 4 ✓ | Partial (~67%) | ~1365 unavailable (SC never auto-promotes) | **No** | R1 / R2 |
+N1 and N2 have identical data availability — the difference is loss of the tie-breaker in N2.
+
+| ID | Node Lost | Reads | Writes | Unavail Partitions | Auto-Recover | Notes |
+|---|---|---|---|---|---|---|
+| **N1** | 1 Site2 replica node (B1, B2, or B3) | ✅ Full | ✅ Full | 0 | Yes | Masters on Site1 untouched. ⚠️ RF↓ until node returns. Cluster 6/7 ≥ 4. |
+| **N2** | Quorum node C1 | ✅ Full | ✅ Full | 0 | Yes | C1 holds 0 data partitions. Cluster 6/7 ≥ 4. **Tie-breaker lost** — next site failure leaves only 3 data nodes, which falls below MCS=4. |
+| **N3** | 1 Site1 master node (A1, A2, or A3) | ⚠️ ~67% | ⚠️ ~67% | ~1365 | **No** | SC never auto-promotes replicas. ~1365 partitions masterless. Cluster 6/7 ≥ 4 but affected keys are unavailable. Restart the node to recover (R1/R2). |
+
+---
 
 ### Site / DC Failures
 
-| # | Nodes Stopped | Remaining | Cluster | Writes? | Partitions | Auto-recover? | Recovery |
-|---|---|---|---|---|---|---|---|
-| **S1** | A1-A3 (Site1) | B1-B3+C1 = 4 | 4 ≥ 4 ✓ | **No** — all 4096 masters gone | 4096 unavailable | No | R1/R4 to restore Site1; or O1+O4 to promote Site2 to master |
-| **S2** | B1-B3 (Site2) | A1-A3+C1 = 4 | 4 ≥ 4 ✓ | **Yes** — masters on Site1 intact | 0 unavailable; ⚠️ durability risk (1 copy per partition) | Yes | R1/R4 |
-| **S3** | A1-A3+C1 (DC1) | B1-B3 = 3 | 3 < 4 — **stops** | **No** | Cluster dead | **No** | R1/R4 — must restore ≥ 1 DC1 node |
-| **S4** | B1-B3 (DC2/Site2) | A1-A3+C1 = 4 | 4 ≥ 4 ✓ | **Yes** | 0 unavailable | Yes | R1/R4 |
+S2 and S4 are equivalent — DC2 contains only Site2.
+
+| ID | What Fails | Nodes Lost | Remaining | Reads | Writes | Unavail Partitions | Auto-Recover | Notes |
+|---|---|---|---|---|---|---|---|---|
+| **S1** | Site 1 (all masters) | A1+A2+A3 | B1-B3 + C1 = 4 | ❌ None | ❌ None | 4096 | **No** | All 4096 masters gone. Cluster 4 ≥ 4 so MCS met, but every partition is masterless. Restore Site1 (R1/R4) **or** promote Site2 via switch active-rack (O4). |
+| **S2 / S4** | Site 2 / DC2 | B1+B2+B3 | A1-A3 + C1 = 4 | ✅ Full | ✅ Full | 0 | Yes | Masters on Site1 intact. ⚠️ RF↓ — only 1 copy per partition (Site1) until Site2 returns. Cluster 4/7 at MCS edge. |
+| **S3** | DC1 (Site1 + Quorum) | A1-A3 + C1 | B1-B3 = 3 | ❌ None | ❌ None | 4096 | **No** | 3 < MCS=4: cluster halts completely. All masters + tie-breaker gone. **Catastrophic.** Must restore ≥1 DC1 node before any recovery is possible (R1/R4). |
+
+---
 
 ### Network Partitions
 
-| # | Partition | Majority | Minority | Writes (majority)? | Notes | Recovery |
+Each network partition creates two independent sides. Availability is listed per side — clients connecting to different sides see different behavior.
+
+| ID | Network Split | DC1 Side (Site1+C1) | | DC2 Side (Site2) | | Key Insight |
 |---|---|---|---|---|---|---|
-| **P1** | Site1 isolated | Site2+C1 (4) | Site1 (3) | **No** — masters stranded in minority | Both sides IO-dead | R3/R4 |
-| **P2** | Site2 isolated | Site1+C1 (4) | Site2 (3) | **Yes** — designed failover | Site2 halts (3 < 4) | R3/R4 |
-| **P3** | C1 isolated | 6 data nodes | C1 (1) | **Yes** | Tie-breaker lost; next site failure = split | R3/R4 + re-quiesce |
-| **P4** | Site1 vs Site2 | Site1+C1 (4, typical) | Site2 (3) | **Yes** (if Site1+C1 win) | C1's succession-list vote decides the winner | R3/R4 |
-| **SB** | DC1 vs DC2 (forced) | Both sides accept writes | — | **Both** — split-brain | Operator overrides SC guards on DC2; data diverges | R4 (data loss on losing side) |
+| | | **Reads** | **Writes** | **Reads** | **Writes** | |
+| **P1** | Site1 isolated from Site2+C1 | ❌ None | ❌ None | ❌ None | ❌ None | **Both sides dead.** Site1 (3) < MCS=4 halts. Site2+C1 (4) has quorum but all masters are stranded on Site1 — SC never promotes replicas. |
+| **P2** | Site2 isolated from Site1+C1 | ✅ Full | ✅ Full | ❌ None | ❌ None | **Designed failover.** DC1 fully operational (4 nodes + all masters). DC2 halts (3 < MCS=4). |
+| **P3** | C1 isolated from all data nodes | ✅ Full | ✅ Full | ✅ Full | ✅ Full | 6 data nodes remain on the data plane ≥ MCS=4. C1 alone halts but holds no data. **Tie-breaker gone** — next partition has no decisive vote. |
+| **P4** | Site1 ↔ Site2 severed (C1 sees both) | ✅ Full | ✅ Full | ❌ None | ❌ None | C1 is co-located in DC1: Site1+C1 = 4 wins. Site2 (3) halts. Same outcome as P2 in practice. |
+| **SB** | DC1 ↔ DC2 (forced) | ⚠️ Diverged | ⚠️ Diverged | ⚠️ Diverged | ⚠️ Diverged | **Catastrophic.** SC guards manually bypassed on DC2. Both sides accept writes to the same keys; data permanently diverges. On heal, one side's writes are irrecoverably lost. **Educational only — never run on production data.** |
 
-### Degraded Modes
+> **P1 vs P2 asymmetry:** With `active-rack=1` all masters live on Site1. In P2 (Site2 isolated) Site1+C1 keeps the masters → DC1 stays operational. In P1 (Site1 isolated) Site1 has the masters but only 3 nodes — below MCS=4 — so it halts, and Site2+C1 cannot promote without a roster change.
 
-| # | Nodes Stopped | Remaining | Cluster | Writes? | Notes | Recovery |
-|---|---|---|---|---|---|---|
-| **D1** | A1+A2 (2/3 Site1) | A3+B1-B3+C1 = 5 | 5 ≥ 4 ✓ | Partial (~33%) | ~2731 masters unavailable | R1/R4 |
-| **D2** | 2/3 Site2 nodes | 3 Site1+1 Site2+C1 = 5 | 5 ≥ 4 ✓ | **Yes** | Replica coverage reduced | R1/R4 |
-| **D3** | C1 + 1 data node | 5 data nodes | 5 ≥ 4 ✓ | Depends on which data node | If Site1 node: ~1365 unavailable. If Site2 node: 0 unavailable | R1/R4 |
-| **D4** | C1 + full site | 3 nodes | 3 < 4 — **stops** | **No** | Cluster dead | R1/R4 — restore ≥ 1 node from failed groups |
+Recovery for all partitions: R3 (heal network) or R4 (full recovery). Re-quiesce C1 after P3.
 
-### Operations
+---
 
-| # | Description | Availability Impact |
-|---|---|---|
-| **O1** | Roster update (re-sync or remove lost node) | Brief pause during recluster (~5 s) |
-| **O2** | Quiesce/un-quiesce C1 | Quiescing C1 has no impact (already holds 0 partitions); quiescing a data node migrates its partitions away |
-| **O3** | Rolling restart | ≤1 node down at a time; Site1 node restart: ~1365 masters briefly unavailable per node |
-| **O4** | Switch active-rack | Brief partition migration; affects which site holds masters |
+### Degraded Modes (Multi-Failure)
 
-### Quick-reference summary
+| ID | Failure Combination | Nodes Lost | Remaining | Reads | Writes | Unavail Partitions | Auto-Recover | Notes |
+|---|---|---|---|---|---|---|---|---|
+| **D1** | 2 of 3 Site1 nodes | A1+A2 (any 2) | A3 + B1-B3 + C1 = 5 | ⚠️ ~33% | ⚠️ ~33% | ~2731 | **No** | Only 1 Site1 node survives. ~2731 masters lost. Cluster 5 ≥ 4 so still up, severely degraded. SC will not auto-promote. |
+| **D2** | 2 of 3 Site2 nodes | B1+B2 (any 2) | A1-A3 + B3 + C1 = 5 | ✅ Full | ✅ Full | 0 | Yes | Masters on Site1 unaffected. ⚠️ RF↓ — replica coverage reduced. Cluster 5 ≥ 4. |
+| **D3** | Quorum + 1 data node | C1 + 1 node | 5 nodes | Depends | Depends | ~1365 (Site1 node) or 0 (Site2 node) | **No** | Tie-breaker lost. If the data node is a Site1 node: partial degradation (~1365 unavailable). If Site2: no data impact but cluster is one site-failure away from halting (5 − 3 = 2 < MCS=4). |
+| **D4** | Quorum + full site | C1 + A1-A3 or B1-B3 | 3 nodes | ❌ None | ❌ None | 4096 (if Site1) | **No** | 3 < MCS=4: cluster halts. Cascading failure — removing C1 first eliminates the safety margin, then losing a full site crosses the threshold. **Catastrophic.** |
 
-| Scenario | Writes? | Auto-recovers? | Severity | Script |
+---
+
+### Recovery Actions
+
+| ID | Action | Read Impact | Write Impact | Details |
 |---|---|---|---|---|
-| Single replica/quorum node failure | Yes | Yes | Low | R1/R2 |
-| Single master node failure (N3) | Partial | **No** | Medium | R1/R2 |
-| Site2 failure (S2/S4) | Yes | Yes | Low | R1/R4 |
-| Site1 failure — all masters (S1) | **No** | **No** | **Critical** | R1/R4 or O1+O4 |
-| DC1 failure — Site1+Quorum (S3) | **No** | **No** | **Catastrophic** | R1/R4 (restore ≥1 DC1 node) |
-| Isolate Site2 — designed failover (P2) | Yes (majority) | Yes | Low | R3/R4 |
-| Isolate Site1 (P1) | **No** (both sides IO-dead) | **No** | High | R3/R4 |
-| Isolate Quorum (P3) | Yes | Yes (safety lost) | Medium | R3/R4 |
-| P4 — C1 tie-breaks | Yes (Site1+C1 side) | No | Medium | R3/R4 |
-| **Split-brain (SB)** | **Both sides** | **No** | **Catastrophic** | R4 + data loss |
-| Site1 degraded 2/3 (D1) | Partial | **No** | High | R1/R4 |
-| Cascading (D4) | **No** | **No** | **Catastrophic** | R1/R4 |
+| **R1** | Recover all | ⏳ → ✅ Full | ⏳ → ✅ Full | Starts all stopped nodes, flushes iptables, revives dead partitions, reclusters, re-quiesces C1. Waits for cluster_size=7. |
+| **R2** | Recover one node | ⏳ → partial restore | ⏳ → partial restore | Restarts one selected node. Revives its partitions. Re-quiesces C1 if C1 was the target. |
+| **R3** | Heal network only | ⏳ Brief | ⏳ Brief | Flushes all iptables DROP rules. Nodes rejoin, partitions revived, recluster triggered. No node restarts. |
+| **R4** | Full recovery + roster re-sync | ⏳ → ✅ Full | ⏳ → ✅ Full | Most thorough: heal network + restart nodes + roster re-sync + revive + recluster + re-quiesce + verify. Use after any SC roster corruption or master loss. |
+| **R5** | Promote Site2 only | ✅ Full (Site2 as master) | ✅ Full (Site2 as master) | **Destructive / irreversible.** Permanently drops Site1 and C1 from roster. Shrinks to 3-node cluster (B1-B3), sets active-rack=2, mcs=2. Use only after confirmed permanent Site1 loss. |
+
+---
+
+### Operational Changes
+
+| ID | Operation | Read Impact | Write Impact | Duration | Notes |
+|---|---|---|---|---|---|
+| **O1** | Roster update / re-sync | ⏳ Brief (~5 s) | ⏳ Brief (~5 s) | ~5 s | Required after any node removal or addition. Triggers recluster. |
+| **O2** | Quiesce / un-quiesce C1 | ✅ None | ✅ None | Instant | C1 holds 0 data partitions — no data impact. Not persistent: must re-apply after restart. |
+| **O3** | Rolling restart (per node) | ⏳ ~1365 partitions brief / Site1 node | ⏳ Same | ~25 s / node | Site2 node restarts have zero data impact. Site1 restarts cause brief master unavailability per node. |
+| **O4** | Switch active-rack | ⏳ Migration | ⏳ Migration | Minutes | Moves all 4096 master partitions to the target rack. Per-partition brief pause during migration. Updates config template for persistence. |
+
+---
+
+### Quick-Reference Summary
+
+| Scenario | Reads | Writes | Severity | Auto-Recover | Script |
+|---|---|---|---|---|---|
+| Site2 / DC2 failure (S2, S4, D2) | ✅ Full | ✅ Full | Low | Yes | R1 / R4 |
+| Quorum node C1 failure (N2) | ✅ Full | ✅ Full | Low (fragile) | Yes | R1 / R2 + re-quiesce |
+| Single Site2 replica node (N1) | ✅ Full | ✅ Full | Low | Yes | R1 / R2 |
+| Quorum isolated (P3) | ✅ Full | ✅ Full | Medium (fragile) | Yes | R3 + re-quiesce |
+| Site2 isolated — designed (P2, P4) | ✅ DC1 | ✅ DC1 | Low | Yes | R3 / R4 |
+| 1 Site1 master node (N3) | ⚠️ ~67% | ⚠️ ~67% | Medium | **No** | R1 / R2 |
+| Quorum + Site2 node (D3 — Site2) | ✅ Full | ✅ Full | Medium (fragile) | **No** | R1 / R4 |
+| Quorum + Site1 node (D3 — Site1) | ⚠️ ~67% | ⚠️ ~67% | High | **No** | R1 / R4 |
+| 2 Site1 master nodes (D1) | ⚠️ ~33% | ⚠️ ~33% | High | **No** | R1 / R4 |
+| Site1 isolated — both sides dead (P1) | ❌ None | ❌ None | High | **No** | R3 / R4 |
+| All masters lost — Site1 down (S1) | ❌ None | ❌ None | Critical | **No** | R1/R4 or O4 |
+| DC1 failure — Site1+Quorum (S3, D4) | ❌ None | ❌ None | Catastrophic | **No** | Restore ≥1 DC1 node first |
+| **Split-brain (SB)** | ⚠️ Diverged | ⚠️ Diverged | Catastrophic | **No** | R4 + inevitable data loss |
+
+---
+
+### Observed Behavior (Tested Scenarios)
+
+The following scenarios have been exercised against this cluster and document actual observed behavior — not just theoretical expectations.
+
+> **Cluster baseline for these observations:** `active-rack=2` (Site 2 holds master partitions), `min-cluster-size=3`, `replication-factor=4`.
+
+#### Happy Path — Cluster Remains Fully Available
+
+**Scenario H1 — Non-active rack (Site 1) degrades**
+- **What happened:** Site 1 nodes (rack 1, replica holders) were stopped.
+- **Observed:** Traffic continued without interruption. Site 2 already held all master partitions (`active-rack=2`). Read and write availability: 100%.
+- **Why it works:** In SC mode, masters are on Site 2. Site 1 holds only replicas. Losing replicas does not affect master availability — the cluster stays above `min-cluster-size` with Site 2 + quorum-node.
+- **Trade-off:** RF dropped from 4 to 2 (only Site 2 copies remain). Durability is reduced until Site 1 returns.
+
+**Scenario H2 — Active rack (Site 2) degrades; tie-breaker present**
+- **What happened:** Site 2 nodes (rack 2, master holders) were stopped. Quorum node (C1) remained running.
+- **Observed:** After recluster, traffic started flowing to Site 1. Reads and writes served from Site 1 at full availability.
+- **Why it works:** The tie-breaker (C1) gave Site 1 + C1 = 4 nodes, meeting `min-cluster-size=4`. Aerospike SC promoted Site 1 replicas to masters automatically. No manual intervention required.
+- **Operational note:** `active-rack` setting influences master placement preference, but SC will promote replicas when a sufficient quorum exists regardless of rack affinity.
+
+---
+
+#### Non-Happy Path — Manual Intervention or Degraded State
+
+**Scenario N1 — Single node failure (master partition reallocation)**
+- **What happened:** One Site 2 master node went down.
+- **Observed:** ~1365 master partitions became unavailable (those pinned to the failed node). SC does not auto-promote replicas. Cluster stayed above MCS but those partitions were inaccessible.
+- **Resolution:** Restart the failed node. Partitions revive automatically on rejoin.
+- **Key insight:** SC never promotes replicas without a full quorum of the partition's replica set. A single-node master failure = partial unavailability, not automatic recovery.
+
+**Scenario N2 — Site 1 + tie-breaker (C1) failure**
+- **What happened:** All Site 1 nodes and the quorum node were stopped. Only Site 2 (3 nodes) remained.
+- **Observed:** Cluster halted. 3 nodes < `min-cluster-size=4`; Site 2 alone could not form a quorum. No reads or writes accepted.
+- **Manual intervention required:**
+  1. Update the SC roster to remove Site 1 nodes and C1 (drop them from the roster).
+  2. Set `active-rack=2` in the namespace config (if not already).
+  3. Reduce `min-cluster-size` to 3 to allow Site 2 alone to form a cluster.
+  4. Recluster and revive.
+- **Result after intervention:** Site 2 formed a 3-node cluster. RF reduced from 4 to 3 (only 3 nodes in roster). Writes accepted.
+- **Risk:** RF=3 with only 3 nodes means no redundancy — losing any one more node = data loss.
+
+**Scenario N3 — Tie-breaker (C1) node restart**
+- **What happened:** Quorum node C1 was restarted (e.g., after a crash or rolling maintenance).
+- **Observed:** C1 rejoined the cluster as a full participant — started accepting master and replica partitions — because the quiesce state is not persisted across restarts.
+- **Required action:** Must re-quiesce C1 immediately after restart:
+  ```bash
+  docker exec quorum-node asinfo -v "quiesce:" -h 172.28.0.31 -p 3000
+  # then recluster so the quiesce takes effect
+  docker exec site1-node1 asinfo -v "recluster:" -h 172.28.0.11 -p 3000
+  ```
+- **Why this matters:** C1 is meant to be a tie-breaker only — holding 0 data partitions. If it holds partitions, a C1 failure causes data unavailability instead of being harmless.
+
+**Scenario N4 — DC link broken (Site 1 + tie-breaker isolated from Site 2)**
+- **What happened:** Network partition isolating DC1 (Site 1 + C1) from DC2 (Site 2).
+- **Observed:** DC1 side (4 nodes) retained quorum and continued serving traffic normally. DC2 side (3 nodes) fell below MCS and halted.
+- **Split-brain risk:** If `min-cluster-size` was manually lowered on DC2 (or SC guards bypassed), both sides could accept writes to the same keys — causing permanent data divergence on heal. This cluster's default config prevents this, but it is the primary risk of a DC link failure.
+- **Recovery:** Heal the network (flush iptables). Both sides merge, DC2 nodes catch up from DC1. No data loss if SC guards were not bypassed.
 
 ---
 
