@@ -1,15 +1,23 @@
 #!/bin/bash
 # =============================================================================
-# validate-cluster.sh -- Quick health check for the 10-node cluster
+# validate-cluster.sh -- Quick health check for the Aerospike SC cluster
 # =============================================================================
 # Verifies:
-#   1. All 10 nodes are running and reachable
+#   1. All nodes are running and reachable
 #   2. Cluster key is consistent (no split-brain)
 #   3. Strong Consistency is enabled
 #   4. Roster is set and valid
-#   5. D1 (quorum-node) is quiesced
-#   6. All masters are on Site 1 (Rack 1)
+#   5. Quorum/tie-breaker node is quiesced
+#   6. All masters are on Rack 1 (active DC)
 #   7. Write/read smoke test
+#
+# Topology selection (default: 2site):
+#   TOPOLOGY=2site  -- site1-node1/2/3, site2-node1/2/3, quorum-node (172.28.0.x)
+#   TOPOLOGY=3dc    -- dc1-node1/2/3,   dc2-node1/2/3,   dc3-node    (172.28.1.x)
+#
+# Examples:
+#   ./validate-cluster.sh                    # 2-site topology (default)
+#   TOPOLOGY=3dc ./validate-cluster.sh       # 3-DC topology
 # =============================================================================
 set -euo pipefail
 
@@ -21,19 +29,39 @@ NC='\033[0m'
 BOLD='\033[1m'
 
 NAMESPACE="mynamespace"
-SEED_CONTAINER="site1-node1"
-SEED_IP="172.28.0.11"
 SEED_PORT="3000"
 EXPECTED_NODES=7
 MAX_WAIT=120
 
-ALL_CONTAINERS=("site1-node1" "site1-node2" "site1-node3"
-                "site2-node1" "site2-node2" "site2-node3"
-                "quorum-node")
-ALL_IPS=("172.28.0.11" "172.28.0.12" "172.28.0.13"
-         "172.28.0.21" "172.28.0.22" "172.28.0.23"
-         "172.28.0.31")
-ALL_IDS=("A1" "A2" "A3" "B1" "B2" "B3" "C1")
+# ---------------------------------------------------------------------------
+# Topology switch
+# ---------------------------------------------------------------------------
+TOPOLOGY="${TOPOLOGY:-2site}"
+if [[ "$TOPOLOGY" == "3dc" ]]; then
+    SEED_CONTAINER="dc1-node1"
+    SEED_IP="172.28.1.11"
+    ALL_CONTAINERS=("dc1-node1" "dc1-node2" "dc1-node3"
+                    "dc2-node1" "dc2-node2" "dc2-node3"
+                    "dc3-node")
+    ALL_IPS=("172.28.1.11" "172.28.1.12" "172.28.1.13"
+             "172.28.1.21" "172.28.1.22" "172.28.1.23"
+             "172.28.1.31")
+    ALL_IDS=("A1" "A2" "A3" "B1" "B2" "B3" "C1")
+    QUORUM_CONTAINER="dc3-node"
+    QUORUM_IP="172.28.1.31"
+else  # 2site (default)
+    SEED_CONTAINER="site1-node1"
+    SEED_IP="172.28.0.11"
+    ALL_CONTAINERS=("site1-node1" "site1-node2" "site1-node3"
+                    "site2-node1" "site2-node2" "site2-node3"
+                    "quorum-node")
+    ALL_IPS=("172.28.0.11" "172.28.0.12" "172.28.0.13"
+             "172.28.0.21" "172.28.0.22" "172.28.0.23"
+             "172.28.0.31")
+    ALL_IDS=("A1" "A2" "A3" "B1" "B2" "B3" "C1")
+    QUORUM_CONTAINER="quorum-node"
+    QUORUM_IP="172.28.0.31"
+fi
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -127,10 +155,10 @@ fi
 # ---------------------------------------------------------------------------
 header "STEP 5: Quorum node (D1) quiesce state"
 # ---------------------------------------------------------------------------
-qstate=$(docker exec quorum-node asinfo -v "namespace/${NAMESPACE}" \
-    -h "172.28.0.31" -p 3000 2>/dev/null \
+qstate=$(docker exec "$QUORUM_CONTAINER" asinfo -v "namespace/${NAMESPACE}" \
+    -h "$QUORUM_IP" -p 3000 2>/dev/null \
     | tr ';' '\n' | grep '^effective_is_quiesced=' | cut -d'=' -f2 || echo "?")
-[ "$qstate" = "true" ] && pass "C1 (quorum-node) is quiesced -- pure tie-breaker" || \
+[ "$qstate" = "true" ] && pass "C1 ($QUORUM_CONTAINER) is quiesced -- pure tie-breaker" || \
     fail "C1 is NOT quiesced (effective_is_quiesced=$qstate) -- it may hold partitions"
 
 # ---------------------------------------------------------------------------

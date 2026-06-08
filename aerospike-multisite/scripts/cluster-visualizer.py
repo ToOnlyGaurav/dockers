@@ -28,6 +28,7 @@ be run on the Docker host where the containers are running.
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -89,9 +90,9 @@ def parse_kv(text: str, sep: str = ";") -> dict:
 NAMESPACE = "mynamespace"
 
 # How rack IDs map to human-readable site and DC labels.
-# Racks not listed fall back to "Rack {n}" / "DC{n}".
-RACK_SITE_LABEL: dict = {1: "Site 1", 2: "Site 2", 3: "Quorum"}
-RACK_DC_LABEL:   dict = {1: "DC1",    2: "DC2",    3: "DC1"}
+# Populated at startup from --topology / TOPOLOGY env var (see bottom of file).
+RACK_SITE_LABEL: dict = {}
+RACK_DC_LABEL:   dict = {}
 
 # Optional: only scan containers whose name contains this string.
 # Leave empty to probe every running container.
@@ -1222,7 +1223,21 @@ def main():
         "--compact", action="store_true",
         help="Hide node detail table and partition table to reduce height",
     )
+    parser.add_argument(
+        "--topology", default=os.environ.get("TOPOLOGY", "2site"),
+        choices=["2site", "3dc"],
+        help="Cluster topology: '2site' (default) or '3dc'. Also reads TOPOLOGY env var.",
+    )
     args = parser.parse_args()
+
+    # Populate rack labels based on topology
+    global RACK_SITE_LABEL, RACK_DC_LABEL
+    if args.topology == "3dc":
+        RACK_SITE_LABEL = {1: "DC1", 2: "DC2", 3: "DC3"}
+        RACK_DC_LABEL   = {1: "DC1", 2: "DC2", 3: "DC3"}
+    else:  # 2site
+        RACK_SITE_LABEL = {1: "Site 1", 2: "Site 2", 3: "Quorum"}
+        RACK_DC_LABEL   = {1: "DC1",    2: "DC2",    3: "DC1"}
 
     console = Console()
 

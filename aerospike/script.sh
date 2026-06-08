@@ -17,7 +17,7 @@ if [ "$VERSION" == "$LATEST" ]; then
     export name="myubuntu-noble_aerospike"
     export args="AEROSPIKE_VERSION=8.1.1.2 TOOLS_VERSION=12.1.1 UBUNTU_VERSION=24.04 ARCH=aarch64 AEROSPIKE_MAJOR_VERSION=8"
     export binaries="aerospike-server-enterprise_8.1.1.2_tools-12.1.1_ubuntu24.04_aarch64.tgz"
-    export configs="aerospike_8.conf trial-features.conf"
+    export configs="aerospike_8.conf"
 elif [ "$VERSION" == "AEROSPIKE7" ]; then
   export name="myubuntu-noble_aerospike"
   export args="AEROSPIKE_VERSION=7.2.0.4 TOOLS_VERSION=11.1.1 UBUNTU_VERSION=24.04 ARCH=aarch64 AEROSPIKE_MAJOR_VERSION=7"

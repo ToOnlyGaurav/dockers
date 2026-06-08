@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Explorer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Database Explorer</h1>
+        <div id="db-selector">
+            <label for="db-dropdown">Select Database:</label>
+            <select id="db-dropdown">
+                <option value="">-- Loading... --</option>
+            </select>
+            <span id="db-health"></span>
+            <button id="refresh-btn" title="Refresh databases">Refresh</button>
+        </div>
+    </header>
+
+    <main>
+        <div id="no-selection">
+            <p>Select a database from the dropdown above to begin.</p>
+        </div>
+
+        <div id="db-panel" class="hidden">
+            <div id="db-status"></div>
+            <div id="capabilities-bar"></div>
+            <div id="action-area"></div>
+            <div id="result-area" class="hidden">
+                <div class="result-header">
+                    <h3>Result</h3>
+                    <button id="clear-result">Clear</button>
+                </div>
+                <pre id="result-content"></pre>
+            </div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+    <script src="zk-browser.js"></script>
+    <script src="mariadb-browser.js"></script>
+    <script src="aerospike-browser.js"></script>
+    <script src="docker-registry-browser.js"></script>
+</body>
+</html>

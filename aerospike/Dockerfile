@@ -38,7 +38,6 @@ RUN ./asinstall
 RUN mkdir -p /etc/aerospike/log /etc/aerospike/config /etc/aerospike/data /etc/aerospike/smd
 
 COPY ./configs/aerospike_${AEROSPIKE_MAJOR_VERSION}.conf /etc/aerospike/config/aerospike.conf
-COPY ./configs/trial-features.conf /etc/aerospike/features.conf
 
 COPY entrypoint.sh entrypoint.sh
 

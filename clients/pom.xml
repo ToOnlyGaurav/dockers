@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.vertx</groupId>
+  <artifactId>clients</artifactId>
+  <version>1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <modules>
+    <module>client-common</module>
+    <module>client-rmq</module>
+    <module>client-aerospike</module>
+    <module>client-mariadb</module>
+    <module>client-hbase</module>
+    <module>client-zookeeper</module>
+    <module>client-docker-registry</module>
+    <module>dropwizard-app</module>
+  </modules>
+
+  <properties>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <slf4j.version>2.0.13</slf4j.version>
+    <logback.version>1.5.6</logback.version>
+    <snakeyaml.version>2.3</snakeyaml.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- Internal modules -->
+      <dependency>
+        <groupId>com.vertx</groupId>
+        <artifactId>client-common</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.vertx</groupId>
+        <artifactId>client-rmq</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.vertx</groupId>
+        <artifactId>client-aerospike</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.vertx</groupId>
+        <artifactId>client-mariadb</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.vertx</groupId>
+        <artifactId>client-hbase</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.vertx</groupId>
+        <artifactId>client-zookeeper</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.vertx</groupId>
+        <artifactId>client-docker-registry</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.vertx</groupId>
+        <artifactId>dropwizard-app</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
+      <!-- Logging -->
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-classic</artifactId>
+        <version>${logback.version}</version>
+      </dependency>
+
+      <!-- YAML -->
+      <dependency>
+        <groupId>org.yaml</groupId>
+        <artifactId>snakeyaml</artifactId>
+        <version>${snakeyaml.version}</version>
+      </dependency>
+
+      <!-- RabbitMQ -->
+      <dependency>
+        <groupId>com.rabbitmq</groupId>
+        <artifactId>amqp-client</artifactId>
+        <version>5.21.0</version>
+      </dependency>
+
+      <!-- Aerospike -->
+      <dependency>
+        <groupId>com.aerospike</groupId>
+        <artifactId>aerospike-client-jdk8</artifactId>
+        <version>8.1.1</version>
+      </dependency>
+
+      <!-- MariaDB -->
+      <dependency>
+        <groupId>org.mariadb.jdbc</groupId>
+        <artifactId>mariadb-java-client</artifactId>
+        <version>3.4.1</version>
+      </dependency>
+
+      <!-- HBase -->
+      <dependency>
+        <groupId>org.apache.hbase</groupId>
+        <artifactId>hbase-client</artifactId>
+        <version>2.6.0</version>
+      </dependency>
+
+      <!-- ZooKeeper -->
+      <dependency>
+        <groupId>org.apache.zookeeper</groupId>
+        <artifactId>zookeeper</artifactId>
+        <version>3.9.2</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+</project>

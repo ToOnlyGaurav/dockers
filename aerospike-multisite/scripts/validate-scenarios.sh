@@ -338,7 +338,12 @@ detect_cluster_config() {
     local sc="${seed_info%%|*}" si="${seed_info##*|}"
 
     local ar mcs
-    ar=$(get_ns_stat "$sc" "$si" "active-rack")
+    # Use effective_active_rack (what the server actually applies) rather than the
+    # configured active-rack value.  In Aerospike 8.x SC mode the effective value
+    # can be 0 even when active-rack=1 is set, meaning masters are distributed
+    # evenly across racks rather than pinned.  All assertions below branch on
+    # EFFECTIVE_ACTIVE_RACK so they stay correct in both cases.
+    ar=$(get_ns_stat "$sc" "$si" "effective_active_rack")
     mcs=$(docker exec "$sc" asinfo -v "get-config:context=service" \
         -h "$si" -p 3000 -t "$ASINFO_TIMEOUT" 2>/dev/null \
         | tr ';' '\n' | grep '^min-cluster-size=' | cut -d'=' -f2 || echo "")
@@ -346,7 +351,7 @@ detect_cluster_config() {
     [ -n "$ar" ]  && EFFECTIVE_ACTIVE_RACK="$ar"
     [ -n "$mcs" ] && EFFECTIVE_MCS="$mcs"
 
-    info "Detected cluster config: active-rack=${EFFECTIVE_ACTIVE_RACK}  min-cluster-size=${EFFECTIVE_MCS}"
+    info "Detected cluster config: effective_active_rack=${EFFECTIVE_ACTIVE_RACK}  min-cluster-size=${EFFECTIVE_MCS}"
 }
 
 # =============================================================================
@@ -561,8 +566,18 @@ assert_baseline() {
         total_masters=$((total_masters + m))
         [ "$rack" = "$EFFECTIVE_ACTIVE_RACK" ] && active_rack_masters=$((active_rack_masters + m))
     done
-    if [ "$total_masters" -gt 0 ] && [ "$active_rack_masters" -eq "$total_masters" ]; then
-        ok "  ASSERT PASS  all ${total_masters} masters on Rack ${EFFECTIVE_ACTIVE_RACK} (active-rack=${EFFECTIVE_ACTIVE_RACK} working)"
+    if [ "$EFFECTIVE_ACTIVE_RACK" = "0" ]; then
+        # effective_active_rack=0: Aerospike 8.x SC mode is distributing masters
+        # evenly across racks (no rack pinning in effect).  Just verify that
+        # masters exist -- there is no single-rack concentration to assert.
+        if [ "$total_masters" -gt 0 ]; then
+            ok "  ASSERT PASS  masters exist (${total_masters} total, distributed across racks -- effective_active_rack=0, no rack pinning)"
+            ASSERT_PASS=$((ASSERT_PASS + 1))
+        else
+            warn "  ASSERT WARN  no master objects yet (cluster may still be migrating)"
+        fi
+    elif [ "$total_masters" -gt 0 ] && [ "$active_rack_masters" -eq "$total_masters" ]; then
+        ok "  ASSERT PASS  all ${total_masters} masters on Rack ${EFFECTIVE_ACTIVE_RACK} (effective_active_rack=${EFFECTIVE_ACTIVE_RACK} working)"
         ASSERT_PASS=$((ASSERT_PASS + 1))
     elif [ "$total_masters" -eq 0 ]; then
         warn "  ASSERT WARN  no master objects yet (cluster may still be migrating)"

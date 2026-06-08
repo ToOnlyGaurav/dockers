@@ -1,0 +1,79 @@
+# Database Explorer Configuration
+# Localhost database connections (lazy-loaded - only connect when selected in UI)
+
+server:
+  applicationConnectors:
+    - type: http
+      port: 8080
+      bindHost: 0.0.0.0
+  adminConnectors:
+    - type: http
+      port: 8081
+      bindHost: 0.0.0.0
+  rootPath: /api/*  # API endpoints under /api, UI served from root
+  requestLog:
+    appenders:
+      - type: console
+
+logging:
+  level: INFO
+  loggers:
+    com.vertx: DEBUG
+  appenders:
+    - type: console
+      threshold: INFO
+      logFormat: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# Database connections for localhost
+# NOTE: Connections are LAZY - they only connect when you actually use them in the UI
+# If a database is not running, it will simply show as "disconnected" in the UI
+databases:
+  # Aerospike NoSQL Database
+  # Default port: 3000
+  aerospike:
+    host: localhost
+    port: 3000
+    namespace: mynamespace
+
+  # MariaDB Relational Database
+  # Default port: 3306
+  mariadb:
+    host: "localhost"
+    port: 3306
+    database: "mysql"
+    username: "root"
+    password: "my-secret-pw"
+
+  # RabbitMQ Message Broker
+  # Default port: 5672
+  rabbitmq:
+    host: "localhost"
+    port: 5672
+    username: "guest"
+    password: "guest"
+    virtualHost: "/"
+    queue: "test_queue"
+    exchange: ""
+    routingKey: "test_queue"
+    durable: true
+    messageCount: 5
+    consumerTimeoutMs: 5000
+
+  # Apache HBase
+  # Default ZooKeeper port: 2181
+  hbase:
+    zookeeperQuorum: "localhost"
+    zookeeperPort: 2181
+
+  # Apache ZooKeeper
+  # Default port: 2181
+  zookeeper:
+    connectString: "localhost:2181"
+    sessionTimeout: 15000
+    connectionTimeout: 5000
+
+  # Docker Registry
+  # Default port: 5000
+  docker-registry:
+    host: "localhost"
+    port: 5000

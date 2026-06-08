@@ -20,4 +20,4 @@ locust/locustfiles/__pycache__/
 */*/log/*
 */*/logs/*
 */*/output/*
-configs/trial-features.conf
+.claude/*

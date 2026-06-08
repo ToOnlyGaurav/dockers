@@ -3,6 +3,8 @@ from random import randrange
 import json
 import logging
 
+NAMESPACE = "mynamespace"
+
 
 class HelloWorldUser(HttpUser):
     services_count = 0
@@ -22,11 +24,11 @@ class HelloWorldUser(HttpUser):
 
     def getUrl(self):
         service = self.services[randrange(self.services_count)]
-        return "/ranger/nodes/v1/phonepe/" + service["serviceName"]
+        return "/ranger/nodes/v1/" + NAMESPACE + "/" + service["serviceName"]
 
     @task
     def func1(self):
-        self.client.get("/ranger/nodes/v1/phonepe/outlander",
+        self.client.get("/ranger/nodes/v1/" + NAMESPACE + "/outlander",
                         headers={"Content-Type": "application/json"})
 
     @task

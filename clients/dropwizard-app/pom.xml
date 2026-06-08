@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.vertx</groupId>
+    <artifactId>clients</artifactId>
+    <version>1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>dropwizard-app</artifactId>
+
+  <properties>
+    <dropwizard.version>4.0.7</dropwizard.version>
+    <logback.version>1.4.14</logback.version>
+  </properties>
+
+  <dependencies>
+    <!-- Dropwizard -->
+    <dependency>
+      <groupId>io.dropwizard</groupId>
+      <artifactId>dropwizard-core</artifactId>
+      <version>${dropwizard.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.dropwizard</groupId>
+      <artifactId>dropwizard-assets</artifactId>
+      <version>${dropwizard.version}</version>
+    </dependency>
+
+    <!-- Force consistent logback version -->
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-core</artifactId>
+      <version>${logback.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <version>${logback.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-access</artifactId>
+      <version>${logback.version}</version>
+    </dependency>
+
+    <!-- Client modules -->
+    <dependency>
+      <groupId>com.vertx</groupId>
+      <artifactId>client-common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.vertx</groupId>
+      <artifactId>client-aerospike</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.vertx</groupId>
+      <artifactId>client-mariadb</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.vertx</groupId>
+      <artifactId>client-rmq</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.vertx</groupId>
+      <artifactId>client-hbase</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.vertx</groupId>
+      <artifactId>client-zookeeper</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.vertx</groupId>
+      <artifactId>client-docker-registry</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>com.vertx.explorer.ExplorerApplication</mainClass>
+                </transformer>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheLicenseResourceTransformer"/>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer"/>
+              </transformers>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                    <exclude>META-INF/MANIFEST.MF</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+              <shadedArtifactAttached>false</shadedArtifactAttached>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

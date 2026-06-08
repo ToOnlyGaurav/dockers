@@ -30,19 +30,32 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 NAMESPACE="mynamespace"
 
-# -- Node definitions ---------------------------------------------------------
-ALL_CONTAINERS=("site1-node1" "site1-node2" "site1-node3" "site2-node1" "site2-node2" "site2-node3" "quorum-node")
-ALL_IPS=(       "172.28.0.11"  "172.28.0.12"  "172.28.0.13"  "172.28.0.21"  "172.28.0.22"  "172.28.0.23"  "172.28.0.31")
-ALL_IDS=(       "A1"           "A2"           "A3"           "B1"           "B2"           "B3"           "C1")
-
-SITE1_CONTAINERS=("site1-node1" "site1-node2" "site1-node3")
-SITE1_IPS=(       "172.28.0.11"  "172.28.0.12"  "172.28.0.13")
-
-SITE2_CONTAINERS=("site2-node1" "site2-node2" "site2-node3")
-SITE2_IPS=(       "172.28.0.21"  "172.28.0.22"  "172.28.0.23")
-
-QUORUM_CONTAINER="quorum-node"
-QUORUM_IP="172.28.0.31"
+# -- Node definitions (topology-aware) ----------------------------------------
+# Select topology via TOPOLOGY env var (default: 2site).
+#   TOPOLOGY=2site  -- site1/site2/quorum-node  172.28.0.x
+#   TOPOLOGY=3dc    -- dc1/dc2/dc3-node         172.28.1.x
+TOPOLOGY="${TOPOLOGY:-2site}"
+if [[ "$TOPOLOGY" == "3dc" ]]; then
+    ALL_CONTAINERS=("dc1-node1" "dc1-node2" "dc1-node3" "dc2-node1" "dc2-node2" "dc2-node3" "dc3-node")
+    ALL_IPS=(       "172.28.1.11" "172.28.1.12" "172.28.1.13" "172.28.1.21" "172.28.1.22" "172.28.1.23" "172.28.1.31")
+    ALL_IDS=(       "A1"          "A2"          "A3"          "B1"          "B2"          "B3"          "C1")
+    SITE1_CONTAINERS=("dc1-node1" "dc1-node2" "dc1-node3")
+    SITE1_IPS=(       "172.28.1.11" "172.28.1.12" "172.28.1.13")
+    SITE2_CONTAINERS=("dc2-node1" "dc2-node2" "dc2-node3")
+    SITE2_IPS=(       "172.28.1.21" "172.28.1.22" "172.28.1.23")
+    QUORUM_CONTAINER="dc3-node"
+    QUORUM_IP="172.28.1.31"
+else  # 2site (default)
+    ALL_CONTAINERS=("site1-node1" "site1-node2" "site1-node3" "site2-node1" "site2-node2" "site2-node3" "quorum-node")
+    ALL_IPS=(       "172.28.0.11"  "172.28.0.12"  "172.28.0.13"  "172.28.0.21"  "172.28.0.22"  "172.28.0.23"  "172.28.0.31")
+    ALL_IDS=(       "A1"           "A2"           "A3"           "B1"           "B2"           "B3"           "C1")
+    SITE1_CONTAINERS=("site1-node1" "site1-node2" "site1-node3")
+    SITE1_IPS=(       "172.28.0.11"  "172.28.0.12"  "172.28.0.13")
+    SITE2_CONTAINERS=("site2-node1" "site2-node2" "site2-node3")
+    SITE2_IPS=(       "172.28.0.21"  "172.28.0.22"  "172.28.0.23")
+    QUORUM_CONTAINER="quorum-node"
+    QUORUM_IP="172.28.0.31"
+fi
 
 # -- Colors -------------------------------------------------------------------
 RED='\033[0;31m'

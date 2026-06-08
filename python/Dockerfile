@@ -27,9 +27,13 @@ RUN python -m pip install --no-cache-dir \
     scikit-learn \
     matplotlib \
     seaborn \
-    aerospike
+    aerospike \
+    pika
 
 WORKDIR /remote
+
+# Mount points for remote files and scripts
+VOLUME ["/remote", "/scripts"]
 
 # Default command to execute when running the container
 CMD ["bash"]

@@ -1,35 +1,58 @@
 #!/bin/bash
 # =============================================================================
-# run.sh -- Start the Aerospike multi-site SC cluster and configure it
+# run.sh -- Start the Aerospike SC cluster and configure it
 # =============================================================================
 # Full startup sequence:
-#   1. docker compose up -d --build
+#   1. docker compose up -d [--build]
 #   2. Wait for all 7 containers to be healthy
 #   3. Set the SC roster (required for writes)
-#   4. Quiesce the quorum node (D1) so it holds 0 partitions
+#   4. Quiesce the tie-breaker node so it holds 0 partitions
 #   5. Verify the cluster is ready
 #
 # Usage:
-#   ./scripts/run.sh              # Full start (build + roster + quiesce)
-#   ./scripts/run.sh --no-build   # Skip docker build (just up + configure)
-#   ./scripts/run.sh --skip-up    # Skip docker compose up (configure only)
+#   ./scripts/run.sh                        # 2-site topology (default)
+#   ./scripts/run.sh --no-build             # Skip docker build
+#   ./scripts/run.sh --skip-up              # Configure only (containers already running)
+#   TOPOLOGY=3dc ./scripts/run.sh           # 3-DC topology
+#   TOPOLOGY=3dc ./scripts/run.sh --no-build
+#
+# Topology:
+#   TOPOLOGY=2site (default) -- docker-compose.yml     172.28.0.x  site1/site2/quorum-node
+#   TOPOLOGY=3dc             -- docker-compose-3dc.yml 172.28.1.x  dc1/dc2/dc3-node
 # =============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# -- Topology switch ----------------------------------------------------------
+TOPOLOGY="${TOPOLOGY:-2site}"
+if [[ "$TOPOLOGY" == "3dc" ]]; then
+    COMPOSE_FILE="docker-compose-3dc.yml"
+    SEED_CONTAINER="dc1-node1"
+    SEED_IP="172.28.1.11"
+    QUORUM_CONTAINER="dc3-node"
+    QUORUM_IP="172.28.1.31"
+    ALL_CONTAINERS=("dc1-node1" "dc1-node2" "dc1-node3" "dc2-node1" "dc2-node2" "dc2-node3" "dc3-node")
+    ALL_IPS=("172.28.1.11" "172.28.1.12" "172.28.1.13" "172.28.1.21" "172.28.1.22" "172.28.1.23" "172.28.1.31")
+    STALE_CONTAINER_PATTERN='^(dc[0-9]+-node[0-9]+|dc3-node)$'
+    TOPOLOGY_LABEL="3-DC (dc1/dc2/dc3)"
+else  # 2site (default)
+    COMPOSE_FILE="docker-compose.yml"
+    SEED_CONTAINER="site1-node1"
+    SEED_IP="172.28.0.11"
+    QUORUM_CONTAINER="quorum-node"
+    QUORUM_IP="172.28.0.31"
+    ALL_CONTAINERS=("site1-node1" "site1-node2" "site1-node3" "site2-node1" "site2-node2" "site2-node3" "quorum-node")
+    ALL_IPS=("172.28.0.11" "172.28.0.12" "172.28.0.13" "172.28.0.21" "172.28.0.22" "172.28.0.23" "172.28.0.31")
+    STALE_CONTAINER_PATTERN='^(site[0-9]+-node[0-9]+|quorum-node)$'
+    TOPOLOGY_LABEL="2-Site (site1/site2/quorum)"
+fi
+
 # -- Constants ----------------------------------------------------------------
 NAMESPACE="mynamespace"
-SEED_CONTAINER="site1-node1"
-SEED_IP="172.28.0.11"
 SEED_PORT="3000"
-QUORUM_CONTAINER="quorum-node"
-QUORUM_IP="172.28.0.31"
 QUORUM_ID="C1"
-
-ALL_CONTAINERS=("site1-node1" "site1-node2" "site1-node3" "site2-node1" "site2-node2" "site2-node3" "quorum-node")
-ALL_IPS=("172.28.0.11" "172.28.0.12" "172.28.0.13" "172.28.0.21" "172.28.0.22" "172.28.0.23" "172.28.0.31")
 TOTAL_NODES=${#ALL_CONTAINERS[@]}
 
 # -- Colors -------------------------------------------------------------------
@@ -94,7 +117,9 @@ do_recluster() {
 # =============================================================================
 TOTAL_STEPS=5
 echo ""
-echo -e "${BOLD}=== Aerospike Multi-Site SC Cluster Startup ===${NC}"
+echo -e "${BOLD}=== Aerospike SC Cluster Startup ===${NC}"
+echo -e "${DIM}  Topology:  ${TOPOLOGY_LABEL}${NC}"
+echo -e "${DIM}  Compose:   ${COMPOSE_FILE}${NC}"
 echo -e "${DIM}  7 nodes | RF=4 | 3 racks | active-rack=1 | SC mode${NC}"
 echo -e "${DIM}  Namespace: ${NAMESPACE}${NC}"
 
@@ -118,7 +143,7 @@ else
             [ "$running_c" = "$expected" ] && in_expected=true && break
         done
         # Only touch containers that look like Aerospike cluster members
-        if ! $in_expected && echo "$running_c" | grep -qE '^(site[0-9]+-node[0-9]+|quorum-node)$'; then
+        if ! $in_expected && echo "$running_c" | grep -qE "$STALE_CONTAINER_PATTERN"; then
             warn "Stopping stale container: $running_c"
             docker stop "$running_c" >/dev/null 2>&1 || true
             stale_found=true
@@ -128,12 +153,12 @@ else
 
     cd "$PROJECT_DIR"
     if [ -n "$BUILD_FLAG" ]; then
-        info "Running: docker compose up -d --build"
+        info "Running: docker compose -f ${COMPOSE_FILE} up -d --build"
     else
-        info "Running: docker compose up -d"
+        info "Running: docker compose -f ${COMPOSE_FILE} up -d"
     fi
     # shellcheck disable=SC2086
-    docker compose up -d $BUILD_FLAG 2>&1 | sed 's/^/  /'
+    docker compose -f "$COMPOSE_FILE" up -d $BUILD_FLAG 2>&1 | sed 's/^/  /'
     ok "Containers started"
 fi
 
@@ -358,12 +383,20 @@ fi
 # Summary
 echo ""
 echo -e "${GREEN}${BOLD}=== Cluster is ready ===${NC}"
-echo -e "${DIM}  Namespace '${NAMESPACE}' is accepting reads and writes"
-echo -e "  All masters on Site 1 (Rack 1) via active-rack=1"
-echo -e "  Quorum node (C1) quiesced -- pure tie-breaker, 0 partitions"
+echo -e "${DIM}  Topology:  ${TOPOLOGY_LABEL}"
+echo -e "  Namespace '${NAMESPACE}' is accepting reads and writes"
+echo -e "  All masters on Rack 1 via active-rack=1"
+echo -e "  Tie-breaker (${QUORUM_CONTAINER} / C1) quiesced -- 0 partitions"
 echo -e ""
+if [[ "$TOPOLOGY" == "3dc" ]]; then
+echo -e "  Dashboard:    python3 scripts/cluster-visualizer.py --topology 3dc"
+echo -e "  Validate:     TOPOLOGY=3dc ./scripts/validate-cluster.sh"
+echo -e "  Simulate:     TOPOLOGY=3dc ./scripts/simulate-failures.sh"
+echo -e "  AQL shell:    docker exec -it dc1-node1 aql${NC}"
+else
 echo -e "  Dashboard:    python3 scripts/cluster-visualizer.py"
 echo -e "  Validate:     ./scripts/validate-cluster.sh"
 echo -e "  Simulate:     ./scripts/simulate-failures.sh"
 echo -e "  AQL shell:    docker exec -it site1-node1 aql${NC}"
+fi
 echo ""

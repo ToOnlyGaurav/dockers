@@ -1,10 +1,19 @@
 # Aerospike Multi-Site Strong Consistency Cluster
 
-A Docker-based **7-node Aerospike Enterprise** cluster simulating a two-datacenter topology with **Strong Consistency (SC)**, **rack-aware RF=4 replication**, and a **quorum tie-breaker** node.
+A Docker-based **7-node Aerospike Enterprise** cluster simulating a multi-datacenter topology with **Strong Consistency (SC)**, **rack-aware RF=4 replication**, and a **quorum tie-breaker** node.
+
+Two compose files are provided and can run simultaneously on the same host (different subnets, container names, and volume prefixes):
+
+| Topology | Compose file | Subnet | Container prefix | Volumes |
+|---|---|---|---|---|
+| **2-Site** (default) | `docker-compose.yml` | 172.28.0.0/24 | `site1-node*`, `site2-node*`, `quorum-node` | `ms_*` |
+| **3-DC** | `docker-compose-3dc.yml` | 172.28.1.0/24 | `dc1-node*`, `dc2-node*`, `dc3-node` | `3dc_*` |
 
 ---
 
 ## Architecture
+
+### 2-Site Topology (`docker-compose.yml`)
 
 ```
  ╔═══════════════════════════════════════════════════════════════════╗
@@ -35,7 +44,7 @@ A Docker-based **7-node Aerospike Enterprise** cluster simulating a two-datacent
  ╚═══════════════════════════════════════════════════════════════════╝
 ```
 
-### Node Reference
+#### 2-Site Node Reference
 
 | DC | Site / Rack | Container | Node ID | IP | Host Ports (svc/fabric/hb/info) |
 |---|---|---|---|---|---|
@@ -46,6 +55,51 @@ A Docker-based **7-node Aerospike Enterprise** cluster simulating a two-datacent
 | DC2 | Site 2 (Rack 2) | `site2-node1` | B1 | 172.28.0.21 | 3300 / 3301 / 3302 / 3303 |
 | DC2 | Site 2 (Rack 2) | `site2-node2` | B2 | 172.28.0.22 | 3400 / 3401 / 3402 / 3403 |
 | DC2 | Site 2 (Rack 2) | `site2-node3` | B3 | 172.28.0.23 | 3500 / 3501 / 3502 / 3503 |
+
+---
+
+### 3-DC Topology (`docker-compose-3dc.yml`)
+
+DC1, DC2, and DC3 are each a fully separate datacenter. DC3 holds only the quorum tie-breaker.
+
+```
+ ╔═══════════════════════════════════════════════════════════════════╗
+ ║  DC1 — Active (Rack 1, all master partitions)                     ║
+ ║                                                                   ║
+ ║   dc1-node1   172.28.1.11  A1   host: :4000/:4001/:4002/:4003    ║
+ ║   dc1-node2   172.28.1.12  A2         :4100/:4101/:4102/:4103    ║
+ ║   dc1-node3   172.28.1.13  A3         :4200/:4201/:4202/:4203    ║
+ ╚═══════════════════════════════════════════════════════════════════╝
+                          │
+                          │  (mesh heartbeats: 172.28.1.0/24)
+                          │
+ ╔═══════════════════════════════════════════════════════════════════╗
+ ║  DC2 — Standby (Rack 2, replica partitions)                       ║
+ ║                                                                   ║
+ ║   dc2-node1   172.28.1.21  B1   host: :4300/:4301/:4302/:4303    ║
+ ║   dc2-node2   172.28.1.22  B2         :4400/:4401/:4402/:4403    ║
+ ║   dc2-node3   172.28.1.23  B3         :4500/:4501/:4502/:4503    ║
+ ╚═══════════════════════════════════════════════════════════════════╝
+                          │
+                          │
+ ╔═══════════════════════════════════════════════════════════════════╗
+ ║  DC3 — Tie-breaker (Rack 3, quiesced, 0 partitions)              ║
+ ║                                                                   ║
+ ║   dc3-node    172.28.1.31  C1   host: :4600/:4601/:4602/:4603    ║
+ ╚═══════════════════════════════════════════════════════════════════╝
+```
+
+#### 3-DC Node Reference
+
+| DC | Rack | Container | Node ID | IP | Host Ports (svc/fabric/hb/info) |
+|---|---|---|---|---|---|
+| DC1 | Rack 1 (active) | `dc1-node1` | A1 | 172.28.1.11 | 4000 / 4001 / 4002 / 4003 |
+| DC1 | Rack 1 (active) | `dc1-node2` | A2 | 172.28.1.12 | 4100 / 4101 / 4102 / 4103 |
+| DC1 | Rack 1 (active) | `dc1-node3` | A3 | 172.28.1.13 | 4200 / 4201 / 4202 / 4203 |
+| DC2 | Rack 2 (standby) | `dc2-node1` | B1 | 172.28.1.21 | 4300 / 4301 / 4302 / 4303 |
+| DC2 | Rack 2 (standby) | `dc2-node2` | B2 | 172.28.1.22 | 4400 / 4401 / 4402 / 4403 |
+| DC2 | Rack 2 (standby) | `dc2-node3` | B3 | 172.28.1.23 | 4500 / 4501 / 4502 / 4503 |
+| DC3 | Rack 3 (quorum) | `dc3-node` | C1 | 172.28.1.31 | 4600 / 4601 / 4602 / 4603 |
 
 ---
 
@@ -114,6 +168,8 @@ This means C1 is automatically quiesced on **every** container start — no manu
 
 ## Quick Start
 
+### 2-Site topology (default)
+
 ```bash
 # Full start from scratch (build + up + roster + quiesce + verify)
 ./scripts/run.sh
@@ -125,15 +181,30 @@ This means C1 is automatically quiesced on **every** container start — no manu
 ./scripts/run.sh --skip-up
 ```
 
+### 3-DC topology
+
+```bash
+# Full start
+TOPOLOGY=3dc ./scripts/run.sh
+
+# Skip build
+TOPOLOGY=3dc ./scripts/run.sh --no-build
+
+# Configure only
+TOPOLOGY=3dc ./scripts/run.sh --skip-up
+```
+
+Both topologies can run simultaneously — they use different networks, container names, and volumes.
+
 `run.sh` does everything in sequence:
 1. Stops any stale containers from previous topologies
-2. `docker compose up -d [--build]`
+2. `docker compose -f <compose-file> up -d [--build]`
 3. Waits for all 7 containers to report `healthy`
 4. Waits for `cluster_size=7`
 5. Sets the SC roster (reads `observed_nodes`, strips the `M<n>|` prefix, calls `roster-set`)
 6. Reclusters + revives any dead partitions
 7. Waits for `cluster-stable:`
-8. Verifies C1 is quiesced (auto-quiesced by the quiesce-keeper in the entrypoint)
+8. Verifies the tie-breaker node is quiesced (auto-quiesced by the quiesce-keeper in the entrypoint)
 9. Runs a write/read smoke test via `aql`
 
 > **Why a roster is required:** In SC mode, Aerospike will not assign partition ownership (and thus reject all reads/writes with error -8) until the roster is explicitly committed via `roster-set`. The roster is persisted in SMD (System Metadata) and survives restarts.
@@ -142,6 +213,8 @@ This means C1 is automatically quiesced on **every** container start — no manu
 
 ## Stopping and Cleanup
 
+### 2-Site topology
+
 ```bash
 # Stop containers, preserve data volumes
 docker compose down
@@ -149,15 +222,32 @@ docker compose down
 # Stop and delete all data (full wipe)
 docker compose down -v
 
-# Nuclear option: remove named volumes by prefix
+# Remove named volumes by prefix
 docker volume ls | grep '^ms_' | awk '{print $2}' | xargs docker volume rm
 ```
 
 Data volumes are named `ms_<node>_<type>` (e.g., `ms_site1_node1_data`). There are **21 volumes** total (7 nodes × 3 each: `data`, `smd`, `log`).
 
+### 3-DC topology
+
+```bash
+# Stop containers, preserve data volumes
+docker compose -f docker-compose-3dc.yml down
+
+# Stop and delete all data (full wipe)
+docker compose -f docker-compose-3dc.yml down -v
+
+# Remove named volumes by prefix
+docker volume ls | grep '^3dc_' | awk '{print $2}' | xargs docker volume rm
+```
+
+Data volumes are named `3dc_<node>_<type>` (e.g., `3dc_dc1_node1_data`). There are **21 volumes** total.
+
 ---
 
 ## Connecting to the Cluster
+
+### 2-Site topology
 
 ```bash
 # aql from inside a container
@@ -166,9 +256,23 @@ docker exec -it site1-node1 aql -h 172.28.0.11 -p 3000
 # asinfo from inside a container
 docker exec site1-node1 asinfo -v "statistics" -h 172.28.0.11 -p 3000
 
-# From the host (if Aerospike tools are installed locally)
+# From the host (port mapped to 3000)
 aql -h 127.0.0.1 -p 3000
 asadm -h 127.0.0.1 -p 3000
+```
+
+### 3-DC topology
+
+```bash
+# aql from inside a container
+docker exec -it dc1-node1 aql -h 172.28.1.11 -p 3000
+
+# asinfo from inside a container
+docker exec dc1-node1 asinfo -v "statistics" -h 172.28.1.11 -p 3000
+
+# From the host (port mapped to 4000)
+aql -h 127.0.0.1 -p 4000
+asadm -h 127.0.0.1 -p 4000
 ```
 
 ```sql
@@ -186,13 +290,15 @@ DELETE FROM mynamespace.test WHERE PK = 'k1'
 
 ```
 ./scripts/run.sh [--no-build] [--skip-up]
+TOPOLOGY=3dc ./scripts/run.sh [--no-build] [--skip-up]
 ```
 
-| Flag | Effect |
+| Flag / Env | Effect |
 |---|---|
-| *(none)* | Build images + start containers + configure cluster |
+| *(none)* | Build images + start containers + configure cluster (2-site topology) |
 | `--no-build` | Skip `docker build`, use existing image |
 | `--skip-up` | Skip `docker compose up`, run roster/quiesce/verify only |
+| `TOPOLOGY=3dc` | Use `docker-compose-3dc.yml` and 3-DC container/IP definitions |
 
 ---
 
@@ -204,14 +310,21 @@ A focused script that only handles the SC roster: reads `observed_nodes`, sets t
 
 ### `scripts/validate-cluster.sh` — 7-step health check
 
-Runs a structured health verification:
+Runs a structured health verification. Supports both topologies via `TOPOLOGY` env var:
+
+```bash
+./scripts/validate-cluster.sh           # 2-site (default)
+TOPOLOGY=3dc ./scripts/validate-cluster.sh  # 3-DC
+```
+
+Checks:
 1. All 7 containers healthy
 2. `cluster_size = 7`
-3. Cluster stability (`cluster-stable:`)
-4. Rack distribution (`rack-id` per node)
-5. SC enabled + roster status
-6. Write/read smoke test
-7. `asadm` summary
+3. No split-brain (all nodes share the same cluster key)
+4. SC enabled + roster committed
+5. Tie-breaker node quiesced
+6. Master partition distribution (all on active rack)
+7. Write/read smoke test via `aql`
 
 ---
 
@@ -1156,24 +1269,28 @@ The following scenarios have been exercised against this cluster and document ac
 ```
 aerospike-multisite/
 │
-├── docker-compose.yml              # 7-node topology (DC1=Site1+Quorum, DC2=Site2)
+├── docker-compose.yml              # 2-site topology (DC1=Site1+Quorum, DC2=Site2) 172.28.0.x
+├── docker-compose-3dc.yml          # 3-DC topology (DC1, DC2, DC3 tie-breaker)     172.28.1.x
 ├── Dockerfile                      # FROM myubuntu + Aerospike EE 8.1.1.2 (aarch64)
 ├── entrypoint_multisite.sh         # Renders config template + runs asd + quiesce-keeper
 │
 ├── configs/
 │   ├── aerospike.conf.template     # Config template with ${NODE_ID}, ${RACK_ID} etc.
+│   │                               # Shared by both topologies (env-var driven)
 │   ├── aerospike_8.conf            # Single-node fallback config (Aerospike 8.x)
 │   └── trial-features.conf         # Enterprise trial license (8-node, expires 2026-05-25)
 │
 ├── scripts/
 │   ├── run.sh                      # Full cluster startup: up + roster + quiesce + verify
+│   │                               # TOPOLOGY=3dc selects docker-compose-3dc.yml
 │   ├── set-roster.sh               # Standalone SC roster set/re-sync helper
-│   ├── validate-cluster.sh         # 7-step health check
-│   ├── simulate-failures.sh        # Interactive failure simulator (26 scenarios: N1-N3, S1-S4,
-│   │                               #   P1-P4, SB, D1-D4, R1-R5, O1-O4, ST)
-│   ├── validate-scenarios.sh       # Automated end-to-end scenario validation (14 tests,
-│   │                               #   active-rack-aware assertions)
-│   └── cluster-visualizer.py       # Live terminal dashboard (pip install rich)
+│   ├── validate-cluster.sh         # 7-step health check (TOPOLOGY=2site|3dc)
+│   ├── simulate-failures.sh        # Interactive failure simulator (TOPOLOGY=2site|3dc)
+│   │                               #   26 scenarios: N1-N3, S1-S4, P1-P4, SB, D1-D4,
+│   │                               #   R1-R5, O1-O4, ST
+│   ├── validate-scenarios.sh       # Automated end-to-end scenario validation
+│   └── cluster-visualizer.py       # Live terminal dashboard (--topology 2site|3dc)
+│                                   # pip install rich
 │
 ├── binaries/                       # Aerospike server + tools .deb packages (aarch64)
 ├── data/                           # Placeholder
