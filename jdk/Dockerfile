@@ -1,22 +1,25 @@
 # Use the official Ubuntu base image
-FROM myubuntu
+FROM myubuntu_noble
 
 # Set environment variables to avoid interactive prompts during build
 ENV DEBIAN_FRONTEND=noninteractive
 
 COPY binaries /remote
 
-# Set JAVA_HOME environment variable
-ENV JAVA_HOME=/remote/jdk-17.0.2
+ARG JAVA_HOME_VERSION=jdk-25.0.2
 
-# Set PATH environment variable
-ENV PATH="$JAVA_HOME/bin:$PATH"
 
-# Verify Java installation
-RUN java -version
+ENV JAVA_HOME=/remote/${JAVA_HOME_VERSION} \
+    PATH=/remote/${JAVA_HOME_VERSION}/bin:$PATH
+
+# Copy entrypoint (used for startup validation/display only - env already set above)
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Define a working directory
 WORKDIR /remote
+
+ENTRYPOINT ["/entrypoint.sh"]
 
 # Default command to execute when running the container
 CMD ["bash"]

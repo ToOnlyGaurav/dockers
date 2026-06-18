@@ -34,6 +34,8 @@ RUN set -eux && \
     tree \
     vim \
     wget \
+    unzip \
+    zip \
     gettext-base \
     iptables \
     apt-transport-https -y && \

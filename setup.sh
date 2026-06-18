@@ -30,8 +30,9 @@ zookeeper(){
   wget https://downloads.apache.org/zookeeper/zookeeper-3.8.4/apache-zookeeper-3.8.4-bin.tar.gz -P ./binary/
 }
 jdk(){
-  wget https://download.oracle.com/java/17/archive/jdk-17_linux-x64_bin.tar.gz -P ./binary/
-  wget https://download.java.net/java/GA/jdk17.0.2/dfd4a8d0985749f896bed50d7138ee7f/8/GPL/openjdk-17.0.2_linux-aarch64_bin.tar.gz -P ./binary/
+#  wget https://download.oracle.com/java/17/archive/jdk-17_linux-x64_bin.tar.gz -P ./binary/
+#  wget https://download.java.net/java/GA/jdk17.0.2/dfd4a8d0985749f896bed50d7138ee7f/8/GPL/openjdk-17.0.2_linux-aarch64_bin.tar.gz -P ./binary/
+  wget https://download.oracle.com/java/25/archive/jdk-25.0.2_linux-aarch64_bin.tar.gz -P ./binary/
 }
 
 prometheus(){
